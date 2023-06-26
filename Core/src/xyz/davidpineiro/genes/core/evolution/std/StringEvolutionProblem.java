@@ -28,4 +28,8 @@ public class StringEvolutionProblem extends GeneticEvolutionProblem<CharGene> {
         }
         return (float)count;
     }
+
+    protected boolean satisfies(float fitness, Genome<CharGene> genome) {
+        return (int)fitness == targetString.length();
+    }
 }

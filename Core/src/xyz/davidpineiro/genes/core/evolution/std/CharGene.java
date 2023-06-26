@@ -3,7 +3,7 @@ package xyz.davidpineiro.genes.core.evolution.std;
 import xyz.davidpineiro.genes.core.Utils;
 import xyz.davidpineiro.genes.core.evolution.Gene;
 
-public class CharGene extends Gene {
+public class CharGene implements Gene {
 
     private char value;
 
@@ -15,8 +15,8 @@ public class CharGene extends Gene {
         return value;
     }
 
-    @Override
-    protected void mutate() {
+    public void mutate() {
         value = Utils.getRandomPrintableChar();
     }
+
 }
