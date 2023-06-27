@@ -4,4 +4,15 @@ public interface GenomeFactory<E extends Gene>{
 
 
     Genome<E> randomGenome();
+
+    static <E extends Gene> Genome<E> getRandomGenome(
+            Genome<E> firstEmptyGenome,
+            GeneFactory<E> geneFactory,
+            int n
+    ){
+        for(int i=0;i<n;i++){
+            firstEmptyGenome.add(geneFactory.randomGene());
+        }
+        return firstEmptyGenome;
+    }
 }

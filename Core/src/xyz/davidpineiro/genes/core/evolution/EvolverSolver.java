@@ -1,47 +1,57 @@
 package xyz.davidpineiro.genes.core.evolution;
 
 import xyz.davidpineiro.genes.core.Utils;
+import xyz.davidpineiro.genes.core.evolution.exceptions.EvolutionTickLimitException;
+import xyz.davidpineiro.genes.core.evolution.std.CharGenome;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
-public abstract class EvolverSolver<E extends Gene> {
+public class EvolverSolver<E extends Gene> {
+
+    public int cMAX_PARENTS = 100;
+    public int cMAX_TICK_LIMIT = 10_000;
+    public int cINIT_NUM = 1000;
+    public float cTOP_PERCENT_PARENTS = 0.2f;
+    public int cCHILDREN = 5;
 
     private static class GenomeResult<E extends Gene>{
         public final Genome<E> genome;
         public final float fitness;
-        public final boolean satisfies;
+//        public final boolean satisfies;
 
-        public GenomeResult(Genome<E> genome, float fitness, boolean satisfies) {
+        public GenomeResult(Genome<E> genome,
+                            float fitness
+//                            boolean satisfies
+        ) {
             this.genome = genome;
             this.fitness = fitness;
-            this.satisfies = satisfies;
+//            this.satisfies = satisfies;
         }
 
         @Override
         public String toString() {
             return "GenomeResult{" +
                     "fitness=" + fitness +
-                    ", satisfies=" + satisfies +
+//                    ", satisfies=" + satisfies +
                     ", genome=" + genome +
                     '}';
         }
     }
 
     public Genome<E> solve(GeneticEvolutionProblem<E> problem,
-//                                            GeneFactory<E> geneFactory,
-                                            GenomeFactory<E> genomeFactory){
-        boolean satisfied = false;
-
+                                            GeneFactory<E> geneFactory,
+                                            GenomeFactory<E> genomeFactory) throws EvolutionTickLimitException {
         List<Genome<E>> population = new ArrayList<>();
 
         //make 100 genomes idk
-        for(int i=0;i<100;i++){
+        for(int i=0;i<this.cINIT_NUM;i++){
             population.add(genomeFactory.randomGenome());
         }
 
-        while(!satisfied){
+        int tick = 0;
+        while(tick <= this.cMAX_TICK_LIMIT){
+            tick++;
             //get fitness of all our genomes rn
             List<GenomeResult<E>> results = new ArrayList<>();
 
@@ -49,40 +59,46 @@ public abstract class EvolverSolver<E extends Gene> {
             {
                 for (final Genome<E> genome : population) {
                     final float fitness = problem.fitness(genome);
-                    satisfied = problem.satisfies(fitness, genome);
+                    final boolean satisfied = problem.satisfies(fitness, genome);
 
                     if(satisfied){
                         return genome;
                     }
 
-                    results.add(new GenomeResult<E>(genome, fitness, satisfied));
+                    results.add(new GenomeResult<E>(genome, fitness));
 
                 }
 
                 //sort by fitness
-                results.sort((a, b) -> (int) (a.fitness - b.fitness));
+                results.sort((a, b) -> (int) (b.fitness - a.fitness));
             }
+
+            //run this after results so we cann see how we did
+            System.out.printf(
+                    "tick: %d, population_size: %d, best: %s\n",
+                    tick, population.size(), results.get(0));
 
             // crossover, produce offspring
             {
                 final int n = results.size();
                 // 0.2 is the top percent of the population that reproduces
-                final int top_n = (int)((float)n * 0.2f);
+                final int top_n = Math.min((int)((float)n * this.cTOP_PERCENT_PARENTS), this.cMAX_PARENTS);
 
                 List<Genome<E>> newPopulation = new ArrayList<>();
 
                 for(int i=0; i<top_n; i++){
-                    final Genome<E> parentAGenome = results.get(i).genome;
+                    final GenomeResult<E> parentAGenomeResult = results.get(i);
 
-                    newPopulation.add(parentAGenome);
+                    newPopulation.add(parentAGenomeResult.genome);
                     for(int j=0; j<top_n; j++){
                         if(i == j)continue;
-                        final Genome<E> parentBGenome = results.get(j).genome;
+                        final GenomeResult<E> parentBGenomeResult = results.get(j);
 
-                        //TODO: amount of children can be configured, its a parameter
-                        final Genome<E> child1 = parentAGenome.crossover(parentBGenome);
+                        for(int i1 = 0; i1< this.cCHILDREN; i1++){
+                            final Genome<E> child = parentAGenomeResult.genome.crossover(parentBGenomeResult.genome);
+                            newPopulation.add(child);
+                        }
 
-                        newPopulation.add(child1);
                     }
                 }
 
@@ -92,11 +108,14 @@ public abstract class EvolverSolver<E extends Gene> {
             // mutations
             {
                 for(Genome<E> genome : population){
-                    if(Utils.chance(0.10f))genome.mutate(0.05f);
+                    if(Utils.chance(0.10f))genome.mutate(geneFactory);
                 }
             }
 
+
         }
+        //if we go past the "tick limit"
+        throw new EvolutionTickLimitException();
     }
 
 }

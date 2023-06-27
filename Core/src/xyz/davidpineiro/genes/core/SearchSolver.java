@@ -1,6 +1,6 @@
 package xyz.davidpineiro.genes.core;
 
-public interface SearchSolver extends Solver{
+public interface SearchSolver{
 
     GeneralSolution solve(SearchProblem problem);
 
