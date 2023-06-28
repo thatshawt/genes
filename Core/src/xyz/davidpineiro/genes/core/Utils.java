@@ -15,4 +15,12 @@ public final class Utils {
         return ASCII_CHARS.charAt(random.nextInt(ASCII_CHARS.length()));
     }
 
+    public static String getRandomPrintableString(int length){
+        StringBuilder builder = new StringBuilder();
+        for(int i=0;i<length;i++){
+            builder.append(getRandomPrintableChar());
+        }
+        return builder.toString();
+    }
+
 }

@@ -12,7 +12,7 @@ public class TestBench {
     public static void main(String[] args) {
         EvolverSolver<CharGenome.CharGene> evolverSolver = new EvolverSolver<>();
 
-        final GeneticEvolutionProblem<CharGenome.CharGene> problem = new StringEvolutionProblem("sussy baka");
+        final GeneticEvolutionProblem<CharGenome.CharGene> problem = new StringEvolutionProblem("sussy_baka");
 
         Genome<CharGenome.CharGene> solution = null;
         try {
@@ -22,7 +22,7 @@ public class TestBench {
                     CharGenome::getRandomGenome
             );
         } catch (EvolutionTickLimitException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e);
         }
 
         System.out.printf("solution: '%s'\n", solution);

@@ -32,4 +32,18 @@ public class StringEvolutionProblem extends GeneticEvolutionProblem<CharGenome.C
     protected boolean satisfies(float fitness, Genome<CharGenome.CharGene> genome) {
         return (int)fitness == targetString.length();
     }
+
+    public static void main(String[] args) {
+        System.out.println("string problem fitness tesst");
+        StringEvolutionProblem problem = new StringEvolutionProblem("poopy");
+        float fitness = problem.fitness(CharGenome.fromString("poopy"));
+        System.out.printf("poopy vs poopy: %f\n", fitness);
+
+        fitness = problem.fitness(CharGenome.fromString("susssy"));
+        System.out.printf("poopy vs susssy: %f\n", fitness);
+
+        fitness = problem.fitness(CharGenome.fromString("poo"));
+        System.out.printf("poopy vs poo: %f\n", fitness);
+    }
+
 }

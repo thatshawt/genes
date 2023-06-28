@@ -7,7 +7,9 @@ import xyz.davidpineiro.genes.core.evolution.GenomeFactory;
 
 public class CharGenome extends Genome<CharGenome.CharGene> {
 
-    public static class CharGene implements Gene {
+    public final String id = Utils.getRandomPrintableString(7);
+
+    public static class CharGene implements Gene, Cloneable {
 
         private char value;
 
@@ -36,6 +38,17 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
                     "value=" + value +
                     '}';
         }
+
+        @Override
+        public CharGene clone() {
+            try {
+                CharGene clone = (CharGene) super.clone();
+                clone.value = this.value;
+                return clone;
+            } catch (CloneNotSupportedException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
 
@@ -54,11 +67,11 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
         final Genome<CharGene> smallerGenome = other.size() <= this.size() ? other : this;
 
         for(int i=0;i<smallerGenome.size();i++){
-            if(Utils.chance(0.5f)) resultGenome.add(longerGenome.get(i));
-            else resultGenome.add(smallerGenome.get(i));
+            if(Utils.chance(0.5f)) resultGenome.add(longerGenome.get(i).clone());
+            else resultGenome.add(smallerGenome.get(i).clone());
         }
         for(int i=smallerGenome.size();i<longerGenome.size();i++){
-            resultGenome.add(longerGenome.get(i));
+            resultGenome.add(longerGenome.get(i).clone());
         }
 
         return resultGenome;
@@ -72,11 +85,19 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
-        builder.append("[");
+        builder.append(String.format("{id:'%s'}[", this.id));
         for(CharGene gene : this){
             builder.append(String.format("%s, ", gene.value));
         }
         builder.append("]");
         return builder.toString();
+    }
+
+    public static CharGenome fromString(String s){
+        CharGenome init = new CharGenome();
+        for(char c : s.toCharArray()){
+            init.add(new CharGene(c));
+        }
+        return init;
     }
 }

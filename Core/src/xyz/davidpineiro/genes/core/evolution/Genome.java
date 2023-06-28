@@ -7,7 +7,7 @@ import java.util.ListIterator;
 
 public abstract class Genome<E extends Gene> extends LinkedList<E> {
 
-    public float cINSERT_GENE_CHANCE = 0.01f;
+    public float cINSERT_GENE_CHANCE = 0.05f;
     public float cADD_GENE_CHANCE = 0.01f;
     public float cDELETE_GENE_CHANCE = 0.01f;
     public float cGENE_MUTATE_CHANCE= 0.05f;
@@ -16,19 +16,28 @@ public abstract class Genome<E extends Gene> extends LinkedList<E> {
     void mutate(GeneFactory<E> geneFactory){
         ListIterator<E> iter = this.listIterator();
 
-        if(Utils.chance(cADD_GENE_CHANCE))iter.add(geneFactory.randomGene());
+        if(Utils.chance(cADD_GENE_CHANCE)){
+            iter.add(geneFactory.randomGene());
+//            System.out.println("added gene");
+        }
 
         while(iter.hasNext()){
             E next = iter.next();
             try {
                 if (Utils.chance(cINSERT_GENE_CHANCE)){
                     iter.add(geneFactory.randomGene());
-//                    System.out.println("added gene");
+//                    System.out.println("inserted gene");
                 }
-                if (Utils.chance(cDELETE_GENE_CHANCE)) iter.remove();
-                if (Utils.chance(cGENE_MUTATE_CHANCE)) next.mutate();
+                if (Utils.chance(cDELETE_GENE_CHANCE)){
+                    iter.remove();
+//                    System.out.println("remove gene");
+                }
+                if (Utils.chance(cGENE_MUTATE_CHANCE)){
+                    next.mutate();
+//                    System.out.println("mutate gene");
+                }
             }catch(IllegalStateException ignore){
-                System.out.print("{illegalstate}\n");
+//                System.out.print("{illegalstate}\n");
             }
         }
     }
