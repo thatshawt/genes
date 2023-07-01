@@ -8,7 +8,7 @@ public final class Utils {
     private static final String ASCII_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 
     public static boolean chance(float percent){
-        return  percent >= random.nextFloat();
+        return  percent > random.nextFloat();
     }
 
     public static char getRandomPrintableChar(){

@@ -11,8 +11,52 @@ public abstract class Genome<E extends Gene> extends LinkedList<E> {
     public float cADD_GENE_CHANCE = 0.01f;
     public float cDELETE_GENE_CHANCE = 0.01f;
     public float cGENE_MUTATE_CHANCE= 0.05f;
+    public float cFLIP_ACTIVE_CHANCE = 0.01f;
 
-    public abstract Genome<E> crossover(Genome<E> other);
+    public int activeGenes(){
+        int count = 0;
+        for(Gene gene : this){
+            if(gene.isActive())count++;
+        }
+        return count;
+    }
+
+    public int inactiveGenes(){
+        int count = 0;
+        for(Gene gene : this){
+            if(!gene.isActive())count++;
+        }
+        return count;
+    }
+
+    protected abstract Genome<E> getEmpty();
+
+    public Genome<E> crossover(Genome<E> other) {
+
+        /*
+        geneA: 32123
+        geneB: 23123123123
+        we cut right^here
+         */
+
+        Genome<E> resultGenome = getEmpty();
+
+        final Genome<E> longerGenome = other.size() >= this.size() ? other : this;
+        final Genome<E> smallerGenome = other.size() <= this.size() ? other : this;
+
+        //this is uniform crossover, idk its the easiest to implement i guess
+        for(int i=0;i<smallerGenome.size();i++){
+            if(Utils.chance(0.5f)) resultGenome.add((E) longerGenome.get(i).clone());
+            else resultGenome.add((E) smallerGenome.get(i).clone());
+        }
+        for(int i=smallerGenome.size();i<longerGenome.size();i++){
+            resultGenome.add((E) longerGenome.get(i).clone());
+        }
+
+        return resultGenome;
+
+    }
+
     void mutate(GeneFactory<E> geneFactory){
         ListIterator<E> iter = this.listIterator();
 
@@ -32,10 +76,7 @@ public abstract class Genome<E extends Gene> extends LinkedList<E> {
                     iter.remove();
 //                    System.out.println("remove gene");
                 }
-                if (Utils.chance(cGENE_MUTATE_CHANCE)){
-                    next.mutate();
-//                    System.out.println("mutate gene");
-                }
+                next.mutateGene(cGENE_MUTATE_CHANCE, cFLIP_ACTIVE_CHANCE);
             }catch(IllegalStateException ignore){
 //                System.out.print("{illegalstate}\n");
             }

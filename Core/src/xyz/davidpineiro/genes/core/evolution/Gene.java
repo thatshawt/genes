@@ -1,7 +1,9 @@
 package xyz.davidpineiro.genes.core.evolution;
 
-public interface Gene {
+public interface Gene extends Cloneable {
 
-    void mutate();
+    boolean isActive();
+    void mutateGene(float geneMutateChance, float activeMutateChance);
+    Gene clone();
 
 }

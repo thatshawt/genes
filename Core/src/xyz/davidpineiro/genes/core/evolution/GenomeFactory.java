@@ -1,8 +1,6 @@
 package xyz.davidpineiro.genes.core.evolution;
 
 public interface GenomeFactory<E extends Gene>{
-
-
     Genome<E> randomGenome();
 
     static <E extends Gene> Genome<E> getRandomGenome(

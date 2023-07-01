@@ -9,16 +9,16 @@ import java.util.List;
 
 public class EvolverSolver<E extends Gene> {
 
-    public int cMAX_PARENTS = 10;
-    public int cMAX_TICK_LIMIT = 10_000;
+    public int cMAX_PARENTS = 15;
+    public int cMAX_TICK_LIMIT = 100_000;
     public int cINIT_NUM = 1000;
     public float cTOP_PERCENT_PARENTS = 0.2f;
-    public int cCHILDREN = 1;
+    public int cCHILDREN = 4;
 
     private static class GenomeResult<E extends Gene>{
         public final Genome<E> genome;
         public final float fitness;
-        public final String id = Utils.getRandomPrintableString(7);
+//        public final String id = Utils.getRandomPrintableString(7);
 //        public final boolean satisfies;
 
         public GenomeResult(Genome<E> genome,
@@ -45,7 +45,7 @@ public class EvolverSolver<E extends Gene> {
                                             GenomeFactory<E> genomeFactory) throws EvolutionTickLimitException {
         List<Genome<E>> population = new ArrayList<>();
 
-        //make 100 genomes idk
+        //make some genomes
         for(int i=0;i<this.cINIT_NUM;i++){
             population.add(genomeFactory.randomGenome());
         }
@@ -74,6 +74,10 @@ public class EvolverSolver<E extends Gene> {
                 results.sort((a, b) -> (int) (b.fitness - a.fitness));
             }
 
+            if(tick == cMAX_TICK_LIMIT){
+                throw new EvolutionTickLimitException(results.get(0).genome);
+            }
+
             //run this after results so we cann see how we did
             System.out.printf(
                     "tick: %d, population_size: %d, best1: %s\n",
@@ -85,7 +89,7 @@ public class EvolverSolver<E extends Gene> {
                 final int n = results.size();
                 // 0.2 is the top percent of the population that reproduces
                 final int top_n = Math.min((int)((float)n * this.cTOP_PERCENT_PARENTS), this.cMAX_PARENTS);
-                System.out.printf("topn: %d\n", top_n);
+//                System.out.printf("topn: %d\n", top_n);
 
                 List<Genome<E>> newPopulation = new ArrayList<>();
 
@@ -117,8 +121,7 @@ public class EvolverSolver<E extends Gene> {
 
 
         }
-        //if we go past the "tick limit"
-        throw new EvolutionTickLimitException();
+        return null;
     }
 
     private static <E extends Gene> void  printPopulation(List<Genome<E>> population){

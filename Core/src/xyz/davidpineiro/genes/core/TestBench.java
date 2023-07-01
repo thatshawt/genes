@@ -12,7 +12,11 @@ public class TestBench {
     public static void main(String[] args) {
         EvolverSolver<CharGenome.CharGene> evolverSolver = new EvolverSolver<>();
 
-        final GeneticEvolutionProblem<CharGenome.CharGene> problem = new StringEvolutionProblem("sussy_baka");
+        final String theString = "super_long_string_for_super_poop";
+
+        final GeneticEvolutionProblem<CharGenome.CharGene> problem = new StringEvolutionProblem(
+                theString
+        );
 
         Genome<CharGenome.CharGene> solution = null;
         try {
@@ -25,7 +29,10 @@ public class TestBench {
             System.err.println(e);
         }
 
-        System.out.printf("solution: '%s'\n", solution);
+        System.out.printf("theString: '%s'\n" +
+                "lenngth: %d\n" +
+                "solution: '%s'\n" +
+                "solution length: %d\n", theString, theString.length(), solution, solution.size());
     }
 
 }

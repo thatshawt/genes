@@ -14,18 +14,27 @@ public class StringEvolutionProblem extends GeneticEvolutionProblem<CharGenome.C
     @Override
     protected float fitness(Genome<CharGenome.CharGene> genome) {
         int count = 0;
-        for(int i=0;i<genome.size();i++){
-            if(i >= targetString.length()){
-                count--;
+
+        int genomei = 0, stringi = 0;
+        while(genomei < genome.size() && stringi < targetString.length()){
+            final CharGenome.CharGene gene = genome.get(genomei);
+            if(!gene.isActive()){
+                genomei++;
                 continue;
             }
 
-            final CharGenome.CharGene gene = genome.get(i);
-            final char target = targetString.charAt(i);
+            final char geneChar = gene.getValue();
+            final char stringChar = targetString.charAt(stringi);
 
-            if(gene.getValue() == target)count++;
-            else count--;
+            if(geneChar == stringChar)
+                count++;
+            else
+                count--;
+
+            stringi++;
+            genomei++;
         }
+
         return (float)count;
     }
 

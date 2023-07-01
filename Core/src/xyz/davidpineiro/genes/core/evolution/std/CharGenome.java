@@ -9,9 +9,15 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
 
     public final String id = Utils.getRandomPrintableString(7);
 
-    public static class CharGene implements Gene, Cloneable {
+    @Override
+    protected Genome<CharGene> getEmpty() {
+        return new CharGenome();
+    }
+
+    public static class CharGene implements Gene {
 
         private char value;
+        private boolean active = true;
 
         public CharGene(char value) {
             this.value = value;
@@ -21,21 +27,28 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
             return value;
         }
 
-        public void mutate() {
-            value = Utils.getRandomPrintableChar();
+        @Override
+        public boolean isActive() {
+            return active;
+        }
+
+        @Override
+        public void mutateGene(float geneMutateChance, float activeMutateChance) {
+            if(Utils.chance(geneMutateChance))   value = Utils.getRandomPrintableChar();
+            if(Utils.chance(activeMutateChance)) active = !active;
         }
 
         public static CharGene getRandom(){
             CharGene gene = new CharGene('a');
-            gene.mutate();
+            gene.mutateGene(1.0f, 0.0f);
             return gene;
         }
 
         @Override
-        public String
-        toString() {
+        public String toString() {
             return "CharGene{" +
                     "value=" + value +
+                    ", active=" + active +
                     '}';
         }
 
@@ -51,33 +64,6 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
         }
     }
 
-
-    @Override
-    public Genome<CharGene> crossover(Genome<CharGene> other) {
-
-        /*
-        geneA: 32123
-        geneB: 23123123123
-        we cut right^here
-         */
-
-        Genome<CharGene> resultGenome = new CharGenome();
-
-        final Genome<CharGene> longerGenome = other.size() >= this.size() ? other : this;
-        final Genome<CharGene> smallerGenome = other.size() <= this.size() ? other : this;
-
-        for(int i=0;i<smallerGenome.size();i++){
-            if(Utils.chance(0.5f)) resultGenome.add(longerGenome.get(i).clone());
-            else resultGenome.add(smallerGenome.get(i).clone());
-        }
-        for(int i=smallerGenome.size();i<longerGenome.size();i++){
-            resultGenome.add(longerGenome.get(i).clone());
-        }
-
-        return resultGenome;
-
-    }
-
     public static Genome<CharGene> getRandomGenome() {
         return GenomeFactory.getRandomGenome(new CharGenome(), CharGene::getRandom, 10);
     }
@@ -87,7 +73,7 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
         StringBuilder builder = new StringBuilder();
         builder.append(String.format("{id:'%s'}[", this.id));
         for(CharGene gene : this){
-            builder.append(String.format("%s, ", gene.value));
+            builder.append(String.format("%s%s, ", gene.isActive() ? "" : "!", gene.value));
         }
         builder.append("]");
         return builder.toString();
