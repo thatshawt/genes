@@ -15,23 +15,28 @@ public class StringEvolutionProblem extends GeneticEvolutionProblem<CharGenome.C
         int count = 0;
 
         int genomei = 0, stringi = 0;
-        while(genomei < genome.size() && stringi < targetString.length()){
+        while(genomei < genome.size()){
             final CharGenome.CharGene gene = genome.get(genomei);
             if(!gene.isActive()){
                 genomei++;
                 continue;
             }
 
-            final char geneChar = gene.getValue();
-            final char stringChar = targetString.charAt(stringi);
+            if(stringi < targetString.length()) {
+                final char geneChar = gene.getValue();
+                final char stringChar = targetString.charAt(stringi);
 
-            if(geneChar == stringChar)
-                count++;
-            else
+                if (geneChar == stringChar)
+                    count++;
+                else
+                    count--;
+
+                stringi++;
+                genomei++;
+            }else{
+                genomei++;
                 count--;
-
-            stringi++;
-            genomei++;
+            }
         }
 
         return (float)count;

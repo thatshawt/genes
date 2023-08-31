@@ -62,10 +62,6 @@ public class EvolutionCurriculum<G extends IGene>
         curriculum.add(new StringEvolutionProblem("hello-world"));
 
         curriculumSolver.solve(curriculum);
-
-//        System.out.printf("hello-wo=ld8||EEE fitness: %f\n",
-//                new StringEvolutionProblem("hello-world")
-//                        .fitness(CharGenome.fromString("hello-wo=ld8||EEE")));
     }
 
 }

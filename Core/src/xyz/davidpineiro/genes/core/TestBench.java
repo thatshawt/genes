@@ -21,14 +21,15 @@ public class TestBench {
         final GeneticEvolutionProblem<CharGenome.CharGene> problem =
                 new StringEvolutionProblem(theString);
 
-        Genome<CharGenome.CharGene> solution = CharGenome.fromString("goo goo gaa gaa");
         EvolverSolver.ReturnReason returnReason = evolverSolver.solve(problem);
-        solution = evolverSolver.solution;
+        Genome<CharGenome.CharGene> solution = evolverSolver.solution;
 
         System.out.printf("theString: '%s'\n" +
                 "lenngth: %d\n" +
                 "solution: '%s'\n" +
-                "solution length: %d\n", theString, theString.length(), solution, solution.size());
+                "solution length: %d\n" +
+                "return reasson: %s\n",
+                theString, theString.length(), solution, solution.size(), returnReason.name());
     }
 
 }

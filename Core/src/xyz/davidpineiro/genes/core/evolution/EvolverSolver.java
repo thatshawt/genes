@@ -81,21 +81,20 @@ public class EvolverSolver<G extends IGene>
             {
                 for (final Genome<G> genome : population) {
                     final float fitness = problem.fitness(genome);
-                    satisfied = satisfied || problem.satisfies(fitness, genome);
+                    satisfied = problem.satisfies(fitness, genome);
+
+                    results.add(new GenomeResult<G>(genome, fitness));
 
                     if(satisfied){
                         solution = (Genome<G>) genome.clone();
 //                        return ReturnReason.SATISFIES;
+                        break;
                     }
-
-                    results.add(new GenomeResult<G>(genome, fitness));
-
                 }
 
                 //sort by fitness
                 results.sort((a, b) -> (int) (b.fitness - a.fitness));
             }
-
             if(tick == cMAX_TICK_LIMIT){
                 solution = results.get(0).genome;
                 return ReturnReason.MAX_TICK;
@@ -109,9 +108,6 @@ public class EvolverSolver<G extends IGene>
 //            printPopulation(population);
 
             if(satisfied){
-//                System.out.println(solution);
-
-                solution = (Genome<G>) solution.clone();
                 return ReturnReason.SATISFIES;
             }
 
