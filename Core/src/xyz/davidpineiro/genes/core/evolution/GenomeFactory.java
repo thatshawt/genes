@@ -1,9 +1,9 @@
 package xyz.davidpineiro.genes.core.evolution;
 
-public interface GenomeFactory<E extends Gene>{
+public interface GenomeFactory<E extends IGene>{
     Genome<E> randomGenome();
 
-    static <E extends Gene> Genome<E> getRandomGenome(
+    static <E extends IGene> Genome<E> getRandomGenome(
             Genome<E> firstEmptyGenome,
             GeneFactory<E> geneFactory,
             int n

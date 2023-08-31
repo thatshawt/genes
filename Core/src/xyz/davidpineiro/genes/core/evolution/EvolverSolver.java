@@ -2,20 +2,42 @@ package xyz.davidpineiro.genes.core.evolution;
 
 import xyz.davidpineiro.genes.core.Utils;
 import xyz.davidpineiro.genes.core.evolution.exceptions.EvolutionTickLimitException;
-import xyz.davidpineiro.genes.core.evolution.std.CharGenome;
+import xyz.davidpineiro.genes.core.problems.Solver;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class EvolverSolver<E extends Gene> {
+public class EvolverSolver<G extends IGene>
+        implements Solver<GeneticEvolutionProblem<G>, EvolverSolver.ReturnReason> {
+
+    public enum ReturnReason{
+        MAX_TICK,SATISFIES
+    }
+
+    /** TODO (s)
+    - add a BioEvolverSolver -> (Codon, Ribosome),
+        inspired directly from ribosomes and amino acids triplet coding.
+        there should be start and stop codons and stuff.
+     */
 
     public int cMAX_PARENTS = 15;
-    public int cMAX_TICK_LIMIT = 100_000;
-    public int cINIT_NUM = 1000;
+    public long cMAX_TICK_LIMIT = 100_000;
+    public int cINIT_RANDOMS = 5000;
     public float cTOP_PERCENT_PARENTS = 0.2f;
     public int cCHILDREN = 4;
 
-    private static class GenomeResult<E extends Gene>{
+    public GeneFactory<G> geneFactory;
+    public GenomeFactory<G> genomeFactory;
+
+    public List<Genome<G>> initPopulation = new ArrayList<>();
+    public Genome<G> solution;
+
+    public EvolverSolver(GeneFactory<G> geneFactory, GenomeFactory<G> genomeFactory) {
+        this.geneFactory = geneFactory;
+        this.genomeFactory = genomeFactory;
+    }
+
+    private static class GenomeResult<E extends IGene>{
         public final Genome<E> genome;
         public final float fitness;
 //        public final String id = Utils.getRandomPrintableString(7);
@@ -40,33 +62,33 @@ public class EvolverSolver<E extends Gene> {
         }
     }
 
-    public Genome<E> solve(GeneticEvolutionProblem<E> problem,
-                                            GeneFactory<E> geneFactory,
-                                            GenomeFactory<E> genomeFactory) throws EvolutionTickLimitException {
-        List<Genome<E>> population = new ArrayList<>();
+    public ReturnReason solve(GeneticEvolutionProblem<G> problem) {
+        List<Genome<G>> population = new ArrayList<>(initPopulation);
 
         //make some genomes
-        for(int i=0;i<this.cINIT_NUM;i++){
+        for(int i = 0; i<this.cINIT_RANDOMS; i++){
             population.add(genomeFactory.randomGenome());
         }
 
-        int tick = 0;
+        long tick = 0;
         while(tick <= this.cMAX_TICK_LIMIT){
             tick++;
             //get fitness of all our genomes rn
-            List<GenomeResult<E>> results = new ArrayList<>();
+            List<GenomeResult<G>> results = new ArrayList<>();
 
+            boolean satisfied = false;
             // get fitnessesese
             {
-                for (final Genome<E> genome : population) {
+                for (final Genome<G> genome : population) {
                     final float fitness = problem.fitness(genome);
-                    final boolean satisfied = problem.satisfies(fitness, genome);
+                    satisfied = satisfied || problem.satisfies(fitness, genome);
 
                     if(satisfied){
-                        return genome;
+                        solution = (Genome<G>) genome.clone();
+//                        return ReturnReason.SATISFIES;
                     }
 
-                    results.add(new GenomeResult<E>(genome, fitness));
+                    results.add(new GenomeResult<G>(genome, fitness));
 
                 }
 
@@ -75,7 +97,9 @@ public class EvolverSolver<E extends Gene> {
             }
 
             if(tick == cMAX_TICK_LIMIT){
-                throw new EvolutionTickLimitException(results.get(0).genome);
+                solution = results.get(0).genome;
+                return ReturnReason.MAX_TICK;
+//                throw new EvolutionTickLimitException();
             }
 
             //run this after results so we cann see how we did
@@ -84,25 +108,31 @@ public class EvolverSolver<E extends Gene> {
                     tick, population.size(), results.get(0));
 //            printPopulation(population);
 
+            if(satisfied){
+//                System.out.println(solution);
+
+                solution = (Genome<G>) solution.clone();
+                return ReturnReason.SATISFIES;
+            }
+
             // crossover, produce offspring
             {
                 final int n = results.size();
-                // 0.2 is the top percent of the population that reproduces
                 final int top_n = Math.min((int)((float)n * this.cTOP_PERCENT_PARENTS), this.cMAX_PARENTS);
 //                System.out.printf("topn: %d\n", top_n);
 
-                List<Genome<E>> newPopulation = new ArrayList<>();
+                List<Genome<G>> newPopulation = new ArrayList<>();
 
                 for(int i=0; i<top_n; i++){
-                    final GenomeResult<E> parentAGenomeResult = results.get(i);
+                    final GenomeResult<G> parentAGenomeResult = results.get(i);
 
                     newPopulation.add(parentAGenomeResult.genome);
                     for(int j=0; j<top_n; j++){
                         if(i == j)continue;
-                        final GenomeResult<E> parentBGenomeResult = results.get(j);
+                        final GenomeResult<G> parentBGenomeResult = results.get(j);
 
                         for(int i1 = 0; i1< this.cCHILDREN; i1++){
-                            final Genome<E> child = parentAGenomeResult.genome.crossover(parentBGenomeResult.genome);
+                            final Genome<G> child = parentAGenomeResult.genome.crossover(parentBGenomeResult.genome);
                             newPopulation.add(child);
                         }
 
@@ -114,7 +144,7 @@ public class EvolverSolver<E extends Gene> {
 
             // mutations
             {
-                for(Genome<E> genome : population){
+                for(Genome<G> genome : population){
                     if(Utils.chance(0.10f))genome.mutate(geneFactory);
                 }
             }
@@ -124,7 +154,7 @@ public class EvolverSolver<E extends Gene> {
         return null;
     }
 
-    private static <E extends Gene> void  printPopulation(List<Genome<E>> population){
+    private static <E extends IGene> void  printPopulation(List<Genome<E>> population){
         System.out.printf("population: {\n");
         for(Genome<?> genome : population){
             System.out.printf("%s, ", genome);

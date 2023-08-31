@@ -1,7 +1,8 @@
-package xyz.davidpineiro.genes.core.evolution.std;
+package xyz.davidpineiro.genes.core.evolution.std.strings;
 
 import xyz.davidpineiro.genes.core.Utils;
-import xyz.davidpineiro.genes.core.evolution.Gene;
+import xyz.davidpineiro.genes.core.evolution.AbstractGene;
+import xyz.davidpineiro.genes.core.evolution.IGene;
 import xyz.davidpineiro.genes.core.evolution.Genome;
 import xyz.davidpineiro.genes.core.evolution.GenomeFactory;
 
@@ -14,10 +15,9 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
         return new CharGenome();
     }
 
-    public static class CharGene implements Gene {
+    public static class CharGene extends AbstractGene {
 
         private char value;
-        private boolean active = true;
 
         public CharGene(char value) {
             this.value = value;
@@ -28,19 +28,13 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
         }
 
         @Override
-        public boolean isActive() {
-            return active;
-        }
-
-        @Override
-        public void mutateGene(float geneMutateChance, float activeMutateChance) {
-            if(Utils.chance(geneMutateChance))   value = Utils.getRandomPrintableChar();
-            if(Utils.chance(activeMutateChance)) active = !active;
+        public void mutate() {
+            value = Utils.getRandomPrintableChar();
         }
 
         public static CharGene getRandom(){
             CharGene gene = new CharGene('a');
-            gene.mutateGene(1.0f, 0.0f);
+            gene.mutate();
             return gene;
         }
 
@@ -54,13 +48,7 @@ public class CharGenome extends Genome<CharGenome.CharGene> {
 
         @Override
         public CharGene clone() {
-            try {
-                CharGene clone = (CharGene) super.clone();
-                clone.value = this.value;
-                return clone;
-            } catch (CloneNotSupportedException e) {
-                throw new RuntimeException(e);
-            }
+            return new CharGene(this.value);
         }
     }
 
