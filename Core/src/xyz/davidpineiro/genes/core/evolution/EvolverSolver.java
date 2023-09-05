@@ -98,13 +98,13 @@ public class EvolverSolver<G extends IGene>
             if(tick == cMAX_TICK_LIMIT){
                 solution = results.get(0).genome;
                 return ReturnReason.MAX_TICK;
-//                throw new EvolutionTickLimitException();
             }
 
             //run this after results so we cann see how we did
-            System.out.printf(
-                    "tick: %d, population_size: %d, best1: %s\n",
-                    tick, population.size(), results.get(0));
+            if(tick % 1000 == 0 || satisfied)
+                System.out.printf(
+                        "tick: %d, population_size: %d, best1: %s\n",
+                        tick, population.size(), results.get(0));
 //            printPopulation(population);
 
             if(satisfied){

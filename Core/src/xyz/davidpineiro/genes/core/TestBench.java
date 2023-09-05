@@ -24,12 +24,14 @@ public class TestBench {
         EvolverSolver.ReturnReason returnReason = evolverSolver.solve(problem);
         Genome<CharGenome.CharGene> solution = evolverSolver.solution;
 
-        System.out.printf("theString: '%s'\n" +
+        System.out.printf(
+                "theString: '%s'\n" +
                 "lenngth: %d\n" +
                 "solution: '%s'\n" +
                 "solution length: %d\n" +
                 "return reasson: %s\n",
-                theString, theString.length(), solution, solution.size(), returnReason.name());
+                theString, theString.length(), solution, solution.size(), returnReason.name()
+        );
     }
 
 }
