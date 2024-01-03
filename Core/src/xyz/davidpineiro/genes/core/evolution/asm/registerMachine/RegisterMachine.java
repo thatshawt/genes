@@ -1,5 +1,9 @@
-package xyz.davidpineiro.genes.core.evolution.asm;
+package xyz.davidpineiro.genes.core.evolution.asm.registerMachine;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -51,7 +55,7 @@ public class RegisterMachine {
     }
 
     private static class OpContext {
-        enum ArgumentType{
+        enum ArgumentType{//9 different ones
             IREG, BREG, FREG, SREG, OREG,
             IIMM, BIMM, FIMM, SIMM,
             ;
@@ -655,6 +659,149 @@ public class RegisterMachine {
                 }
 
                 return instructions;
+            }
+        }
+    }
+
+    static class BinaryRepresentation{
+        public final InstructionBlock instructionBlock;
+        public final DataBlock dataBlock;
+        public BinaryRepresentation(InstructionBlock instructionBlock, DataBlock dataBlock) {
+            this.instructionBlock = instructionBlock;
+            this.dataBlock = dataBlock;
+        }
+
+        private enum State{LOOKING_BLOCK, RESOLVE_IMMEDIATES, FINISHED}
+
+        public static BinaryRepresentation fromInputStream(InputStream input) throws IOException {
+            InstructionBlock instructionBlock1 = null;
+            DataBlock dataBlock1 = null;
+
+            State state = State.LOOKING_BLOCK;
+            int data;
+            while(state != State.FINISHED){ //lol?
+                data = input.read();
+                if(state == State.LOOKING_BLOCK){
+                    if(instructionBlock1 != null && dataBlock1 != null){
+                        state = State.RESOLVE_IMMEDIATES;
+                    }else{
+                        switch(data){
+                            case InstructionBlock.MAGIC_HEADER:
+                                instructionBlock1 = InstructionBlock.fromInputStream(input);break;
+                            case DataBlock.MAGIC_HEADER:
+                                dataBlock1 = DataBlock.fromInputStream(input);break;
+                        }
+                    }
+
+                }else if(state == State.RESOLVE_IMMEDIATES){
+
+                }
+            }
+            return new BinaryRepresentation(instructionBlock1, dataBlock1);
+        }
+
+        static class InstructionBlock{
+            public static final byte MAGIC_HEADER = 1;
+
+            private enum State{
+                INSTRUCTION_LENGTH,
+                READING_INSTRUCTIONS,
+                FINISHED,
+            }
+
+            public final Assembler.CompleteInstruction[] completeInstructions;
+
+            public InstructionBlock(Assembler.CompleteInstruction[] completeInstructions) {
+                this.completeInstructions = completeInstructions;
+            }
+
+            public static InstructionBlock fromInputStream(InputStream input) throws IOException {
+                State state = State.INSTRUCTION_LENGTH;
+
+                List<Assembler.CompleteInstruction> completeInstructionList = new ArrayList<>();
+
+                int instructions_length = 0;
+                int instructionIndex = 0;
+
+                byte[] buffer = new byte[4];
+                ByteBuffer bufferWrapper = ByteBuffer.wrap(buffer);
+
+                while(state != State.FINISHED){
+                    if(state == State.INSTRUCTION_LENGTH){
+                        input.readNBytes(buffer, 0, 2); //read 2 bytes
+                        instructions_length = bufferWrapper.getShort(0);
+                        state = State.READING_INSTRUCTIONS;
+                    }else if(state == State.READING_INSTRUCTIONS){
+                        if(instructionIndex == instructions_length){
+                            state = State.FINISHED;
+                        }else{
+                            input.readNBytes(buffer, 0, 2);
+
+                            final short opcode = bufferWrapper.getShort(0);
+                            final Instruction instruction =
+                                    BinaryRepresentation.instructionFromOpcode(opcode);
+
+                            input.readNBytes(buffer, 0, 1);
+
+                            final byte arguments = bufferWrapper.get(0);
+                            OpContext.ArgumentType[] argTypes = new OpContext.ArgumentType[arguments];
+                            int[] argSizes = new int[arguments];
+
+                            //reading argument types
+                            for(int argi=0;argi<arguments;argi++){
+                                input.readNBytes(buffer, 0, 1);
+                                final byte argByteData =  bufferWrapper.get(0);
+                                input.readNBytes(buffer, 0, 4);
+                                final int argByteLength =  bufferWrapper.getInt(0);
+
+                                final OpContext.ArgumentType argType =
+                                        BinaryRepresentation.argTypeFromByte(argByteData);
+
+                                argTypes[argi] = argType;
+                                argSizes[argi] = argByteLength;
+                            }
+
+                            OpContext.Argument[] opContextArguments = new OpContext.Argument[arguments];
+
+                            //reading the arguments
+                            for(int argi=0;argi<arguments;argi++){
+                                final int argLength = argSizes[argi];
+                                final OpContext.ArgumentType argType = argTypes[argi];
+                                Object value;
+
+                                if(argType == OpContext.ArgumentType.SIMM){
+                                    value = new String(input.readNBytes(argLength));
+                                }else{
+                                    input.readNBytes(buffer, 0, argLength);
+                                    switch(argType){
+                                        case BIMM:value = bufferWrapper.getInt(0)==1;break;
+                                        case FIMM:value = bufferWrapper.getFloat(0);break;
+                                        default:value = bufferWrapper.getInt(0);break;
+                                    }
+                                }
+                                opContextArguments[argi] = new OpContext.Argument(argType, value);
+                            }
+
+                            final Assembler.CompleteInstruction completeInstruction =
+                                    new Assembler.CompleteInstruction(instruction, opContextArguments);
+
+                            completeInstructionList.add(completeInstruction);
+
+                            instructionIndex++;
+                        }
+                    }
+                }
+
+                final Assembler.CompleteInstruction[] instructions =
+                        completeInstructionList.toArray(new Assembler.CompleteInstruction[0]);
+
+                return new InstructionBlock(instructions);
+            }
+        }
+        static class DataBlock{
+            public static final byte MAGIC_HEADER = 2;
+            public static DataBlock fromInputStream(InputStream input) throws IOException {
+                return null;
             }
         }
     }
