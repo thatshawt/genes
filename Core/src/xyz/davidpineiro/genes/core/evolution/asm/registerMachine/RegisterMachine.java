@@ -1,11 +1,10 @@
 package xyz.davidpineiro.genes.core.evolution.asm.registerMachine;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public class RegisterMachine {
 
@@ -93,6 +92,13 @@ public class RegisterMachine {
                 return value;
             }
 
+            public int getSize() {
+                switch(argumentType){
+                    case SIMM: return getString().length();
+                    case BIMM: return 1;
+                    default: return 4;
+                }
+            }
         }
         public final RegisterMachine rm;
         public final Argument[] arguments;
@@ -304,9 +310,13 @@ public class RegisterMachine {
 
         public final String spec;
         public final Consumer<OpContext> exec;
+        public final SpecLanguage.Parser.ParseData parseData;
         Instruction(String spec, Consumer<OpContext> exec){
             this.spec = spec;
             this.exec = exec;
+
+            final List<SpecLanguage.Lexer.Token> tokens = SpecLanguage.Lexer.lex(spec);
+            this.parseData = SpecLanguage.Parser.parse(tokens);
         }
     }
 
@@ -671,29 +681,97 @@ public class RegisterMachine {
             this.dataBlock = dataBlock;
         }
 
-        private enum State{LOOKING_BLOCK, RESOLVE_IMMEDIATES, FINISHED}
+        private enum ReadingState {LOOKING_BLOCK, RESOLVE_IMMEDIATES, FINISHED}
+        private enum WritingState {ERROR}
+        public static void writeToOutputStream(List<Assembler.CompleteInstruction> program, OutputStream output)
+                throws IOException {
+            WritingState state = WritingState.ERROR;
+
+            byte[] buffer = new byte[4];
+            ByteBuffer wrapper = ByteBuffer.wrap(buffer);
+
+            //write magic header for instructiton block (1 byte)
+            output.write(InstructionBlock.MAGIC_HEADER);
+
+            wrapper.putShort((short)program.size());
+            output.write(buffer, 0 , 2); // write # of instructions (2 bytes)
+            wrapper.clear();
+
+            for(Assembler.CompleteInstruction instruction : program){
+                //write opcode (2 bytes)
+                wrapper.clear();
+                wrapper.putShort((short)instruction.instruction.ordinal());
+                output.write(buffer, 0, 2);
+
+                //write argument length (1 byte)
+                wrapper.clear();
+                wrapper.put((byte)instruction.arguments.length);
+                output.write(buffer, 0, 1);
+
+                //write arg descriptors
+                for(OpContext.Argument argument : instruction.arguments){
+                    //write argtype (1 byte)
+                    output.write((byte)argument.argumentType.ordinal());
+
+                    //write arg size (4 bytes)
+                    wrapper.clear();
+                    wrapper.putInt(argument.getSize());
+                    output.write(buffer, 0, 4);
+                }
+
+                //write arguments
+                for(OpContext.Argument argument : instruction.arguments){
+                    //write arg (? bytes)
+//                    System.out.println("writing arg " + argument);
+                    switch(argument.argumentType){
+                        case BIMM:
+                            if (argument.getBool()) output.write(1);
+                             else output.write(0);
+                            break;
+                        case FIMM:
+                            wrapper.clear();
+                            wrapper.putFloat(argument.getFloat());
+                            output.write(buffer, 0, 4);
+                            break;
+                        case SIMM:
+                            final String stringVal = argument.getString();
+                            output.write(stringVal.getBytes(), 0, stringVal.length());
+                            break;
+                        default:
+                            wrapper.clear();
+                            wrapper.putInt(argument.getInt());
+                            output.write(buffer, 0, 4);
+                            break;
+                    }
+
+                }
+
+            }
+        }
 
         public static BinaryRepresentation fromInputStream(InputStream input) throws IOException {
             InstructionBlock instructionBlock1 = null;
             DataBlock dataBlock1 = null;
 
-            State state = State.LOOKING_BLOCK;
+            ReadingState state = ReadingState.LOOKING_BLOCK;
             int data;
-            while(state != State.FINISHED){ //lol?
+            while(state != ReadingState.FINISHED){ //lol?
                 data = input.read();
-                if(state == State.LOOKING_BLOCK){
-                    if(instructionBlock1 != null && dataBlock1 != null){
-                        state = State.RESOLVE_IMMEDIATES;
+                if(state == ReadingState.LOOKING_BLOCK){
+                    if(instructionBlock1 != null){
+                        state = ReadingState.FINISHED;
                     }else{
                         switch(data){
                             case InstructionBlock.MAGIC_HEADER:
+//                                System.out.println("reading instruction block...");
                                 instructionBlock1 = InstructionBlock.fromInputStream(input);break;
                             case DataBlock.MAGIC_HEADER:
+//                                System.out.println("reading datta block...");
                                 dataBlock1 = DataBlock.fromInputStream(input);break;
                         }
                     }
 
-                }else if(state == State.RESOLVE_IMMEDIATES){
+                }else if(state == ReadingState.RESOLVE_IMMEDIATES){
 
                 }
             }
@@ -730,29 +808,50 @@ public class RegisterMachine {
                     if(state == State.INSTRUCTION_LENGTH){
                         input.readNBytes(buffer, 0, 2); //read 2 bytes
                         instructions_length = bufferWrapper.getShort(0);
+//                        System.out.println("instruction length == " + instructions_length);
                         state = State.READING_INSTRUCTIONS;
                     }else if(state == State.READING_INSTRUCTIONS){
-                        if(instructionIndex == instructions_length){
+                        if(instructionIndex > instructions_length-1){
                             state = State.FINISHED;
                         }else{
+                            //read the opcode (2 bytes)
                             input.readNBytes(buffer, 0, 2);
+//                            System.out.println(Arrays.toString(buffer));
 
                             final short opcode = bufferWrapper.getShort(0);
                             final Instruction instruction =
                                     BinaryRepresentation.instructionFromOpcode(opcode);
 
+//                            System.out.println("2opcode " + instruction.name());
+//                            System.out.println();
+
+                            //read argument length (1 byte)
                             input.readNBytes(buffer, 0, 1);
+//                            System.out.println(Arrays.toString(buffer));
 
                             final byte arguments = bufferWrapper.get(0);
                             OpContext.ArgumentType[] argTypes = new OpContext.ArgumentType[arguments];
                             int[] argSizes = new int[arguments];
 
+//                            System.out.println("1argument length " + arguments);
+//                            System.out.println();
+
                             //reading argument types
                             for(int argi=0;argi<arguments;argi++){
+                                //read arg type (1 byte)
                                 input.readNBytes(buffer, 0, 1);
+//                                System.out.println(Arrays.toString(buffer));
+
                                 final byte argByteData =  bufferWrapper.get(0);
+                                //read arg size (4 bytes)
                                 input.readNBytes(buffer, 0, 4);
+//                                System.out.println(Arrays.toString(buffer));
+
                                 final int argByteLength =  bufferWrapper.getInt(0);
+
+//                                System.out.println("1arg type " + argByteData);
+//                                System.out.println("4arg length " + argByteLength);
+//                                System.out.println();
 
                                 final OpContext.ArgumentType argType =
                                         BinaryRepresentation.argTypeFromByte(argByteData);
@@ -769,10 +868,18 @@ public class RegisterMachine {
                                 final OpContext.ArgumentType argType = argTypes[argi];
                                 Object value;
 
+//                                System.out.printf("reading %d bytes for argument\n", argLength);
+
                                 if(argType == OpContext.ArgumentType.SIMM){
                                     value = new String(input.readNBytes(argLength));
+//                                    System.out.println(Arrays.toString(buffer));
+//
+//                                    System.out.printf("read string: '%s'\n\n", value);
                                 }else{
                                     input.readNBytes(buffer, 0, argLength);
+//                                    System.out.println(Arrays.toString(buffer));
+//
+//                                    System.out.printf("%dread a register, bimm or fimm...\n", argLength);
                                     switch(argType){
                                         case BIMM:value = bufferWrapper.getInt(0)==1;break;
                                         case FIMM:value = bufferWrapper.getFloat(0);break;
@@ -798,6 +905,15 @@ public class RegisterMachine {
                 return new InstructionBlock(instructions);
             }
         }
+
+        private static OpContext.ArgumentType argTypeFromByte(byte argByteData) {
+            return OpContext.ArgumentType.values()[argByteData];
+        }
+
+        private static Instruction instructionFromOpcode(short opcode) {
+            return Instruction.values()[opcode];
+        }
+
         static class DataBlock{
             public static final byte MAGIC_HEADER = 2;
             public static DataBlock fromInputStream(InputStream input) throws IOException {
@@ -808,19 +924,46 @@ public class RegisterMachine {
 
     public static void main(String[] args) {
         //imod ireg, ireg, ireg
-        String assemblerInput = "imov ireg0 123 imov ireg1 123 imul ireg2 ireg1 ireg0";
+        String assemblerInput = "imov ireg0 123\nimov ireg1 123\nimul ireg2 ireg1 ireg0";
         List<Assembler.Lexer.Token> asmTokens = Assembler.Lexer.lex(assemblerInput);
         System.out.println(assemblerInput);
-        System.out.println(asmTokens);
+//        System.out.println(asmTokens);
 
         List<Assembler.CompleteInstruction> instructions = Assembler.Parser.parse(asmTokens);
-        System.out.println(instructions);
 
-        RegisterMachine registerMachine = new RegisterMachine();
-        registerMachine.loadProgramAndResetIp(instructions);
-        System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
-        registerMachine.stepUntilHalt();
-        System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
+        ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+
+        try {
+            BinaryRepresentation.writeToOutputStream(instructions, byteStream);
+
+            byte[] rawBytes = byteStream.toByteArray();
+            byte[] rawBytesReversed = new byte[rawBytes.length];
+
+            for (int i = 0; i < rawBytes.length; i++) {
+                final int j = rawBytesReversed.length-i-1;
+                rawBytesReversed[j] = rawBytes[i];
+            }
+
+            System.out.println(Arrays.toString(rawBytes));
+//            System.out.println(Arrays.toString(rawBytesReversed));
+            System.out.printf("array size : %d\n", byteStream.toByteArray().length);
+
+
+//            System.out.println(instructions);
+            Assembler.CompleteInstruction[] moreInstructions =
+                    BinaryRepresentation.fromInputStream(new ByteArrayInputStream(rawBytes))
+                            .instructionBlock.completeInstructions;
+
+            System.out.println(Arrays.toString(moreInstructions));
+
+            RegisterMachine registerMachine = new RegisterMachine();
+            registerMachine.loadProgramAndResetIp(List.of(moreInstructions));
+            System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
+            registerMachine.stepUntilHalt();
+            System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
 //        String specLangInput = "imov ireg, ireg, ireg";
 //        System.out.println(specLangInput);
