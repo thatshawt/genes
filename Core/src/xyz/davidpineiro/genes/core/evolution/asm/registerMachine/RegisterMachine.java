@@ -4,7 +4,6 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 public class RegisterMachine {
 
@@ -23,22 +22,30 @@ public class RegisterMachine {
         while(state.ip < state.program.length)step();
     }
 
-    public void loadProgramAndResetIp(List<Assembler.CompleteInstruction> instructions){
+    public void resetStateAndLoadProgram(List<Assembler.CompleteInstruction> instructions){
+        state = new State();
         state.program = instructions.toArray(new Assembler.CompleteInstruction[0]);
-        state.ip = 0;
     }
 
     protected static class State{
         protected int ip = 0;
 
-        //TODO fix this ugly
-        public Assembler.CompleteInstruction[] program;
+        protected Assembler.CompleteInstruction[] program;
 
-        protected int[] ireg = new int[5];
-        protected boolean[] breg = new boolean[5];
-        protected float[] freg = new float[5];
-        protected String[] sreg = new String[5];
-        protected Object[] oreg = new Object[5];
+        public static final int REGISTER_COUNT = 5;
+
+        protected int[] ireg = new int[REGISTER_COUNT];
+        protected boolean[] breg = new boolean[REGISTER_COUNT];
+        protected float[] freg = new float[REGISTER_COUNT];
+        protected String[] sreg = new String[REGISTER_COUNT];
+        protected Object[] oreg = new Object[REGISTER_COUNT];
+
+        /*
+        TODO(in progress): create custom memory class
+        requirements:
+        - basically just a HashMap<Integer, MemTypeGoesHere>
+        - should not throw any types of errors
+         */
 
         protected List<Integer> imem = new ArrayList<>();
         protected List<Boolean> bmem = new ArrayList<>();
@@ -46,6 +53,17 @@ public class RegisterMachine {
         protected List<String> smem = new ArrayList<>();
         protected List<Object> omem = new ArrayList<>();
 
+        /*
+        TODO: create custom stack class
+        requirements:
+        - pop()
+             when stack is empty it pushes an error on the error stack,
+             it doesnt throw an excpeption
+        - push(value)
+            works the same, throws excpetion when you try to push null value
+        - clear()
+            works the same
+         */
         protected Stack<Integer> istack =  new Stack<>();
         protected Stack<Boolean> bstack =  new Stack<>();
         protected Stack<Float> fstack =  new Stack<>();
@@ -58,6 +76,22 @@ public class RegisterMachine {
             IREG, BREG, FREG, SREG, OREG,
             IIMM, BIMM, FIMM, SIMM,
             ;
+
+            public SpecLanguage.Parser.ArgumentType toSpecLang(){
+                switch (this){
+                    case SIMM: return SpecLanguage.Parser.ArgumentType.STRING_IMM;
+                    case SREG: return SpecLanguage.Parser.ArgumentType.STRING_REG;
+                    case BIMM: return SpecLanguage.Parser.ArgumentType.BOOL_IMM;
+                    case BREG : return SpecLanguage.Parser.ArgumentType.BOOL_REG;
+                    case FIMM : return SpecLanguage.Parser.ArgumentType.FLOAT_IMM;
+                    case FREG : return SpecLanguage.Parser.ArgumentType.FLOAT_REG;
+                    case IIMM : return SpecLanguage.Parser.ArgumentType.INTEGER_IMM;
+                    case IREG : return SpecLanguage.Parser.ArgumentType.INTEGER_REG;
+                    case OREG : return SpecLanguage.Parser.ArgumentType.OBJECT_REG;
+                    default: return null;
+                }
+            }
+
         }
         static class Argument{
             public final ArgumentType argumentType;
@@ -115,12 +149,54 @@ public class RegisterMachine {
         ip_load("ipload ireg", (c) -> {
             c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ip;
         }),
+
+        ip_push("ippush", (c) -> {
+            c.rm.state.istack.push(c.rm.state.ip);
+        }),
+
         jmp("jmp iimm/ireg", (c) -> {
             final OpContext.Argument arg0 = c.arguments[0];
             if(arg0.argumentType == OpContext.ArgumentType.IREG){
                 c.rm.state.ip = c.rm.state.ireg[arg0.getInt()];
             }else if(arg0.argumentType == OpContext.ArgumentType.IIMM){
                 c.rm.state.ip = arg0.getInt();
+            }
+        }),
+
+        push_registers("pushregs", (c) -> {
+            final State state = c.rm.state;
+
+            //push all registers
+            for(int i=0;i<State.REGISTER_COUNT;i++) {
+                state.istack.push(state.ireg[i]);
+                state.bstack.push(state.breg[i]);
+                state.sstack.push(state.sreg[i]);
+                state.fstack.push(state.freg[i]);
+            }
+
+        }),
+
+        pop_all("popregs", (c) -> {
+            final State state = c.rm.state;
+
+            //pop all backwards
+            for (int i = State.REGISTER_COUNT - 1; i >= 0; i--){
+                state.freg[i] = state.fstack.pop();
+                state.breg[i] = state.bstack.pop();
+                state.sreg[i] = state.sstack.pop();
+                state.ireg[i] = state.istack.pop();
+            }
+
+        }),
+
+        reset_registers("resetregs", (c) -> {
+            final State state = c.rm.state;
+
+            for(int i=0;i<State.REGISTER_COUNT;i++){
+                state.freg[i] = 0.0f;
+                state.breg[i] = true;
+                state.sreg[i] = "";
+                state.ireg[i] = 0;
             }
         }),
 
@@ -301,7 +377,7 @@ public class RegisterMachine {
 
 
         //=====START OBJECT INSTRUCTIONS=====
-        //TODO: nothing i guess for now!?!??!?!?
+        //TODO: what to do with object instructions ;-;
         //=====END OBJECT INSTRUCTIONS=====
         ;
 
@@ -608,14 +684,23 @@ public class RegisterMachine {
         }
 
         public static class Parser{
+            /**
+             * thrown when a type is not what it should be
+             */
+            static class WrongTypeException extends Exception{
+                public WrongTypeException(String message) {
+                    super(message);
+                }
+            }
+
             enum State{WAITING, ERROR, ARGUMENTS}
-            public static List<CompleteInstruction> parse(List<Lexer.Token> tokens){
+            public static List<CompleteInstruction> parse(List<Lexer.Token> tokens) throws WrongTypeException {
                 List<CompleteInstruction> instructions = new ArrayList<>();
                 State state = State.WAITING;
 
-                SpecLanguage.Parser.Argument[] specArgTypes;
+                SpecLanguage.Parser.Argument[] specArgTypes = null;
+                OpContext.Argument[] argsBuffer = null;
 
-                OpContext.Argument[] argsBuffer = new OpContext.Argument[0];
                 String currentOP = null;
                 int argi = 0;
 
@@ -632,8 +717,6 @@ public class RegisterMachine {
                             state = State.ERROR;
                         }
                     }else if(state == State.ARGUMENTS){
-                        //TODO raise some type of error if tthe types do not match
-//                        final SpecLanguage.Parser.Argument expectedArg = specArgTypes[argi];
 
                         if(token.type == Lexer.TokenType.FLOAT_LIT){
                             argsBuffer[argi] = new OpContext.Argument(
@@ -657,6 +740,21 @@ public class RegisterMachine {
 
                             argsBuffer[argi] = new OpContext.Argument(type, regValue);
                         }
+
+                        final SpecLanguage.Parser.ArgumentType[] expectedArgTypes
+                                = specArgTypes[argi].argumentType;
+
+                        final SpecLanguage.Parser.ArgumentType currentType
+                                = argsBuffer[argi].argumentType.toSpecLang();
+                        if(!List.of(expectedArgTypes).contains(currentType)){
+                            final String message = String.format(
+                                    "Type Error| op: %s, arg index: %d, expected types: %s, got %s (%s) instead.",
+                                    currentOP, argi, Arrays.toString(expectedArgTypes),
+                                    argsBuffer[argi].value.toString(), currentType.name()
+                            );
+                            throw new WrongTypeException(message);
+                        }
+
                         argi++;
                         if(argi == argsBuffer.length){
                             state = State.WAITING;
@@ -923,31 +1021,22 @@ public class RegisterMachine {
     }
 
     public static void main(String[] args) {
-        //imod ireg, ireg, ireg
         String assemblerInput = "imov ireg0 123\nimov ireg1 123\nimul ireg2 ireg1 ireg0";
         List<Assembler.Lexer.Token> asmTokens = Assembler.Lexer.lex(assemblerInput);
         System.out.println(assemblerInput);
-//        System.out.println(asmTokens);
-
-        List<Assembler.CompleteInstruction> instructions = Assembler.Parser.parse(asmTokens);
-
-        ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 
         try {
+            List<Assembler.CompleteInstruction> instructions = Assembler.Parser.parse(asmTokens);
+
+            ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+
             BinaryRepresentation.writeToOutputStream(instructions, byteStream);
 
             byte[] rawBytes = byteStream.toByteArray();
-            byte[] rawBytesReversed = new byte[rawBytes.length];
-
-            for (int i = 0; i < rawBytes.length; i++) {
-                final int j = rawBytesReversed.length-i-1;
-                rawBytesReversed[j] = rawBytes[i];
-            }
 
             System.out.println(Arrays.toString(rawBytes));
 //            System.out.println(Arrays.toString(rawBytesReversed));
             System.out.printf("array size : %d\n", byteStream.toByteArray().length);
-
 
 //            System.out.println(instructions);
             Assembler.CompleteInstruction[] moreInstructions =
@@ -957,15 +1046,17 @@ public class RegisterMachine {
             System.out.println(Arrays.toString(moreInstructions));
 
             RegisterMachine registerMachine = new RegisterMachine();
-            registerMachine.loadProgramAndResetIp(List.of(moreInstructions));
+            registerMachine.resetStateAndLoadProgram(List.of(moreInstructions));
             System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
             registerMachine.stepUntilHalt();
             System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
         } catch (IOException e) {
             e.printStackTrace();
+        } catch (Assembler.Parser.WrongTypeException e) {
+            System.err.println(e.getMessage());
         }
 
-//        String specLangInput = "imov ireg, ireg, ireg";
+//        String specLangInput = "jmp iimm/ireg";
 //        System.out.println(specLangInput);
 //
 //        List<SpecLanguage.Lexer.Token> specTokens = SpecLanguage.Lexer.lex(specLangInput);
