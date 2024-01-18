@@ -4,6 +4,8 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class RegisterMachine {
 
@@ -19,7 +21,7 @@ public class RegisterMachine {
     }
 
     public void stepUntilHalt(){
-        while(state.ip < state.program.length)step();
+        while(state.ip < state.program.length || state.halt)step();
     }
 
     public void resetStateAndLoadProgram(List<Assembler.CompleteInstruction> instructions){
@@ -27,8 +29,49 @@ public class RegisterMachine {
         state.program = instructions.toArray(new Assembler.CompleteInstruction[0]);
     }
 
+    private static class MachineMemory<T>{
+        private final SortedMap<Integer, T> memory = new TreeMap<>();
+        private final Supplier<T> defaultValue;
+
+        public MachineMemory(Supplier<T> defaultValue) {
+            this.defaultValue = defaultValue;
+        }
+
+        public void set(int address, T val){
+            memory.put(address, val);
+        }
+
+        public T get(int address){
+            if(!memory.containsKey(address)) set(address, defaultValue.get());
+            return memory.get(address);
+        }
+    }
+
+    private static class StringMachineMemory extends MachineMemory<String>{
+        public StringMachineMemory() {
+            super(() -> "");
+        }
+    }
+    private static class IntMachineMemory extends MachineMemory<Integer>{
+        public IntMachineMemory() {
+            super(() -> 0);
+        }
+    }
+
+    private static class FloatMachineMemory extends MachineMemory<Float>{
+        public FloatMachineMemory() {
+            super(() -> 0.0f);
+        }
+    }
+    private static class BooleanMachineMemory extends MachineMemory<Boolean>{
+        public BooleanMachineMemory() {
+            super(() -> true);
+        }
+    }
+
     protected static class State{
         protected int ip = 0;
+        protected boolean halt = false;
 
         protected Assembler.CompleteInstruction[] program;
 
@@ -40,18 +83,12 @@ public class RegisterMachine {
         protected String[] sreg = new String[REGISTER_COUNT];
         protected Object[] oreg = new Object[REGISTER_COUNT];
 
-        /*
-        TODO(in progress): create custom memory class
-        requirements:
-        - basically just a HashMap<Integer, MemTypeGoesHere>
-        - should not throw any types of errors
-         */
 
-        protected List<Integer> imem = new ArrayList<>();
-        protected List<Boolean> bmem = new ArrayList<>();
-        protected List<Float> fmem = new ArrayList<>();
-        protected List<String> smem = new ArrayList<>();
-        protected List<Object> omem = new ArrayList<>();
+        protected IntMachineMemory imem = new IntMachineMemory();
+        protected BooleanMachineMemory bmem = new BooleanMachineMemory();
+        protected FloatMachineMemory fmem = new FloatMachineMemory();
+        protected StringMachineMemory smem = new StringMachineMemory();
+        protected MachineMemory<Object> omem = new MachineMemory<Object>(Object::new);
 
         /*
         TODO: create custom stack class
@@ -146,6 +183,12 @@ public class RegisterMachine {
 
     public enum Instruction{
         //special instructions
+        halt("halt", (c) -> {
+            c.rm.state.halt = true;
+        }),
+
+        nop("nop", (c) -> {}),
+
         ip_load("ipload ireg", (c) -> {
             c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ip;
         }),
@@ -154,12 +197,54 @@ public class RegisterMachine {
             c.rm.state.istack.push(c.rm.state.ip);
         }),
 
-        jmp("jmp iimm/ireg", (c) -> {
+        jump("jmp iimm/ireg", (c) -> {
             final OpContext.Argument arg0 = c.arguments[0];
             if(arg0.argumentType == OpContext.ArgumentType.IREG){
-                c.rm.state.ip = c.rm.state.ireg[arg0.getInt()];
+                c.rm.state.ip += c.rm.state.ireg[arg0.getInt()];
             }else if(arg0.argumentType == OpContext.ArgumentType.IIMM){
-                c.rm.state.ip = arg0.getInt();
+                c.rm.state.ip += arg0.getInt();
+            }
+        }),
+
+        jump_long("jmpl iimm/ireg", (c) -> {
+            final OpContext.Argument arg0 = c.arguments[0];
+            switch(arg0.argumentType){
+                case IREG:
+                    c.rm.state.ip = c.rm.state.ireg[arg0.getInt()];
+                    break;
+                case IIMM:
+                    c.rm.state.ip = arg0.getInt();
+                    break;
+            }
+        }),
+
+        jump_if_true("jmpt breg, iimm/ireg", (c) -> {
+            final OpContext.Argument arg0 = c.arguments[0];
+            final OpContext.Argument arg1 = c.arguments[1];
+            if(c.rm.state.breg[arg0.getInt()]){
+                switch(arg1.argumentType){
+                    case IREG:
+                        c.rm.state.ip += c.rm.state.ireg[arg1.getInt()];
+                        break;
+                    case IIMM:
+                        c.rm.state.ip += arg1.getInt();
+                        break;
+                }
+            }
+        }),
+
+        jump_long_if_true("jmplt breg, iimm/ireg", (c) -> {
+            final OpContext.Argument arg0 = c.arguments[0];
+            final OpContext.Argument arg1 = c.arguments[1];
+            if(c.rm.state.breg[arg0.getInt()]){
+                switch(arg1.argumentType){
+                    case IREG:
+                        c.rm.state.ip = c.rm.state.ireg[arg1.getInt()];
+                        break;
+                    case IIMM:
+                        c.rm.state.ip = arg1.getInt();
+                        break;
+                }
             }
         }),
 
