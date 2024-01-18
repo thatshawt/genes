@@ -1,10 +1,12 @@
 package xyz.davidpineiro.genes.core.evolution.asm.registerMachine;
 
+import org.apache.commons.lang.NullArgumentException;
+
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class RegisterMachine {
@@ -16,12 +18,18 @@ public class RegisterMachine {
 
         OpContext context = new OpContext(this, instruction.arguments);
 
-        instruction.instruction.exec.accept(context);
+        instruction.instruction.exec.accept(context.arguments, state);
         state.ip++;
     }
 
     public void stepUntilHalt(){
-        while(state.ip < state.program.length || state.halt)step();
+        while(state.ip < state.program.length || state.halt){
+            try {
+                step();
+            }catch(ErrorStateException e){
+                //idk
+            }
+        }
     }
 
     public void resetStateAndLoadProgram(List<Assembler.CompleteInstruction> instructions){
@@ -57,7 +65,6 @@ public class RegisterMachine {
             super(() -> 0);
         }
     }
-
     private static class FloatMachineMemory extends MachineMemory<Float>{
         public FloatMachineMemory() {
             super(() -> 0.0f);
@@ -66,6 +73,41 @@ public class RegisterMachine {
     private static class BooleanMachineMemory extends MachineMemory<Boolean>{
         public BooleanMachineMemory() {
             super(() -> true);
+        }
+    }
+
+    private static class MachineStack<T>{
+
+        private State state;
+        private Stack<T> stack = new Stack<>();
+
+        // when stack is empty it pushes an error on the error stack
+        public T pop() throws ErrorStateException {
+            if (stack.size() == 0)
+                throw new ErrorStateException(ErrorState.POP_EMPTY_STACK);
+
+            return stack.pop();
+        }
+
+        //works the same, throws excpetion when you try to push null value
+        public void push(T val){
+            if(val == null)
+                throw new NullArgumentException("bad!!!");
+
+            stack.push(val);
+        }
+
+        public void clear(){
+            stack.clear();
+        }
+    }
+
+    protected enum ErrorState{
+        DIV_BY_ZERO, POP_EMPTY_STACK,
+    }
+    protected static class ErrorStateException extends Exception{
+        public ErrorStateException(ErrorState errorState) {
+            super(errorState.name());
         }
     }
 
@@ -83,24 +125,17 @@ public class RegisterMachine {
         protected String[] sreg = new String[REGISTER_COUNT];
         protected Object[] oreg = new Object[REGISTER_COUNT];
 
+        //TODO: fix the clearAllRegisters stuff
+        protected ErrorState[] ereg = new ErrorState[REGISTER_COUNT];
+
 
         protected IntMachineMemory imem = new IntMachineMemory();
         protected BooleanMachineMemory bmem = new BooleanMachineMemory();
         protected FloatMachineMemory fmem = new FloatMachineMemory();
         protected StringMachineMemory smem = new StringMachineMemory();
-        protected MachineMemory<Object> omem = new MachineMemory<Object>(Object::new);
+        protected MachineMemory<Object> omem = new MachineMemory<>(Object::new);
 
-        /*
-        TODO: create custom stack class
-        requirements:
-        - pop()
-             when stack is empty it pushes an error on the error stack,
-             it doesnt throw an excpeption
-        - push(value)
-            works the same, throws excpetion when you try to push null value
-        - clear()
-            works the same
-         */
+
         protected Stack<Integer> istack =  new Stack<>();
         protected Stack<Boolean> bstack =  new Stack<>();
         protected Stack<Float> fstack =  new Stack<>();
@@ -183,74 +218,66 @@ public class RegisterMachine {
 
     public enum Instruction{
         //special instructions
-        halt("halt", (c) -> {
-            c.rm.state.halt = true;
+        halt("halt", (args,state) -> {
+            state.halt = true;
         }),
 
-        nop("nop", (c) -> {}),
+        nop("nop", (args,state) -> {}),
 
-        ip_load("ipload ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ip;
+        ip_load("ipload ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.ip;
         }),
 
-        ip_push("ippush", (c) -> {
-            c.rm.state.istack.push(c.rm.state.ip);
+        ip_push("ippush", (args,state) -> {
+            state.istack.push(state.ip);
         }),
 
-        jump("jmp iimm/ireg", (c) -> {
-            final OpContext.Argument arg0 = c.arguments[0];
-            if(arg0.argumentType == OpContext.ArgumentType.IREG){
-                c.rm.state.ip += c.rm.state.ireg[arg0.getInt()];
-            }else if(arg0.argumentType == OpContext.ArgumentType.IIMM){
-                c.rm.state.ip += arg0.getInt();
+        jump("jmp iimm/ireg", (args,state) -> {
+            if(args[0].argumentType == OpContext.ArgumentType.IREG){
+                state.ip += state.ireg[args[0].getInt()];
+            }else if(args[0].argumentType == OpContext.ArgumentType.IIMM){
+                state.ip += args[0].getInt();
             }
         }),
 
-        jump_long("jmpl iimm/ireg", (c) -> {
-            final OpContext.Argument arg0 = c.arguments[0];
-            switch(arg0.argumentType){
+        jump_long("jmpl iimm/ireg", (args,state) -> {
+            switch(args[0].argumentType){
                 case IREG:
-                    c.rm.state.ip = c.rm.state.ireg[arg0.getInt()];
+                    state.ip = state.ireg[args[0].getInt()];
                     break;
                 case IIMM:
-                    c.rm.state.ip = arg0.getInt();
+                    state.ip = args[0].getInt();
                     break;
             }
         }),
 
-        jump_if_true("jmpt breg, iimm/ireg", (c) -> {
-            final OpContext.Argument arg0 = c.arguments[0];
-            final OpContext.Argument arg1 = c.arguments[1];
-            if(c.rm.state.breg[arg0.getInt()]){
-                switch(arg1.argumentType){
+        jump_if_true("jmpt breg, iimm/ireg", (args,state) -> {
+            if(state.breg[args[0].getInt()]){
+                switch(args[1].argumentType){
                     case IREG:
-                        c.rm.state.ip += c.rm.state.ireg[arg1.getInt()];
+                        state.ip += state.ireg[args[1].getInt()];
                         break;
                     case IIMM:
-                        c.rm.state.ip += arg1.getInt();
+                        state.ip += args[1].getInt();
                         break;
                 }
             }
         }),
 
-        jump_long_if_true("jmplt breg, iimm/ireg", (c) -> {
-            final OpContext.Argument arg0 = c.arguments[0];
-            final OpContext.Argument arg1 = c.arguments[1];
-            if(c.rm.state.breg[arg0.getInt()]){
-                switch(arg1.argumentType){
+        jump_long_if_true("jmplt breg, iimm/ireg", (args,state) -> {
+            if(state.breg[args[0].getInt()]){
+                switch(args[1].argumentType){
                     case IREG:
-                        c.rm.state.ip = c.rm.state.ireg[arg1.getInt()];
+                        state.ip = state.ireg[args[1].getInt()];
                         break;
                     case IIMM:
-                        c.rm.state.ip = arg1.getInt();
+                        state.ip = args[1].getInt();
                         break;
                 }
             }
         }),
 
-        push_registers("pushregs", (c) -> {
-            final State state = c.rm.state;
-
+        push_registers("pushregs", (args,state) -> {
             //push all registers
             for(int i=0;i<State.REGISTER_COUNT;i++) {
                 state.istack.push(state.ireg[i]);
@@ -261,9 +288,7 @@ public class RegisterMachine {
 
         }),
 
-        pop_all("popregs", (c) -> {
-            final State state = c.rm.state;
-
+        pop_registers("popregs", (args,state) -> {
             //pop all backwards
             for (int i = State.REGISTER_COUNT - 1; i >= 0; i--){
                 state.freg[i] = state.fstack.pop();
@@ -274,68 +299,72 @@ public class RegisterMachine {
 
         }),
 
-        reset_registers("resetregs", (c) -> {
-            final State state = c.rm.state;
-
+        reset_registers("resetregs", (args,state) -> {
             for(int i=0;i<State.REGISTER_COUNT;i++){
                 state.freg[i] = 0.0f;
                 state.breg[i] = true;
                 state.sreg[i] = "";
                 state.ireg[i] = 0;
+                state.oreg[i] = new Object();
             }
+        }),
+
+        reset_stacks("resetstacks", (args,state) -> {
+            state.istack.clear();
+            state.fstack.clear();
+            state.bstack.clear();
+            state.sstack.clear();
+            state.ostack.clear();
         }),
 
         //=====START INTEGER INSTRUCTIONS=====
 
         //arithmetic instructions
-        int_add("iadd ireg, ireg, ireg", (c) -> {
-            final OpContext.Argument arg0 = c.arguments[0];
-            final OpContext.Argument arg1 = c.arguments[1];
-            final OpContext.Argument arg2 = c.arguments[2];
-            c.rm.state.ireg[arg0.getInt()] = c.rm.state.ireg[arg1.getInt()] + c.rm.state.ireg[arg2.getInt()];
+        int_add("iadd ireg, ireg, ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] + state.ireg[args[2].getInt()];
         }),
-        int_sub("isub ireg, ireg, ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] - c.rm.state.ireg[c.arguments[2].getInt()];
+        int_sub("isub ireg, ireg, ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] - state.ireg[args[2].getInt()];
         }),
-        int_mul("imul ireg, ireg, ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] * c.rm.state.ireg[c.arguments[2].getInt()];
+        int_mul("imul ireg, ireg, ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] * state.ireg[args[2].getInt()];
         }),
-        int_div("idiv ireg, ireg, ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] / c.rm.state.ireg[c.arguments[2].getInt()];
+        int_div("idiv ireg, ireg, ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] / state.ireg[args[2].getInt()];
         }),
 
-        int_mod("imod ireg, ireg, ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] % c.rm.state.ireg[c.arguments[2].getInt()];
+        int_mod("imod ireg, ireg, ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] % state.ireg[args[2].getInt()];
         }),
 
         //conditionals
-        int_gt("igt breg, ireg, ireg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] > c.rm.state.ireg[c.arguments[2].getInt()];
+        int_gt("igt breg, ireg, ireg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.ireg[args[1].getInt()] > state.ireg[args[2].getInt()];
         }),
-        int_st("ist breg, ireg, ireg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] < c.rm.state.ireg[c.arguments[2].getInt()];
+        int_st("ist breg, ireg, ireg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.ireg[args[1].getInt()] < state.ireg[args[2].getInt()];
         }),
-        int_eq("ieq breg, ireg, ireg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.ireg[c.arguments[1].getInt()] == c.rm.state.ireg[c.arguments[2].getInt()];
+        int_eq("ieq breg, ireg, ireg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.ireg[args[1].getInt()] == state.ireg[args[2].getInt()];
         }),
 
         //value moving
-        int_mov("imov ireg, iimm", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.arguments[1].getInt();
+        int_mov("imov ireg, iimm", (args,state) -> {
+            state.ireg[args[0].getInt()] = args[1].getInt();
         }),
-        int_load("iload ireg, ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.imem.get(c.rm.state.ireg[c.arguments[1].getInt()]);
+        int_load("iload ireg, ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.imem.get(state.ireg[args[1].getInt()]);
         }),
-        int_store("istore ireg, ireg", (c) -> {
-            c.rm.state.imem.set(c.rm.state.ireg[c.arguments[0].getInt()], c.rm.state.ireg[c.arguments[1].getInt()]);
+        int_store("istore ireg, ireg", (args,state) -> {
+            state.imem.set(state.ireg[args[0].getInt()], state.ireg[args[1].getInt()]);
         }),
 
         //stack instructions
-        int_pop("ipop ireg", (c) -> {
-            c.rm.state.ireg[c.arguments[0].getInt()] = c.rm.state.istack.pop();
+        int_pop("ipop ireg", (args,state) -> {
+            state.ireg[args[0].getInt()] = state.istack.pop();
         }),
-        int_push("ipush ireg", (c) -> {
-            c.rm.state.istack.push(c.rm.state.ireg[c.arguments[0].getInt()]);
+        int_push("ipush ireg", (args,state) -> {
+            state.istack.push(state.ireg[args[0].getInt()]);
         }),
         //=====END INTEGER INSTRUCTIONS=====
 
@@ -343,89 +372,89 @@ public class RegisterMachine {
         //=====START FLOAT INSTRUCTIONS=====
 
         //arithmetic instructions
-        float_add("fadd freg, freg, freg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] + c.rm.state.freg[c.arguments[2].getInt()];
+        float_add("fadd freg, freg, freg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.freg[args[1].getInt()] + state.freg[args[2].getInt()];
         }),
-        float_sub("fsub freg, freg, freg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] - c.rm.state.freg[c.arguments[2].getInt()];
+        float_sub("fsub freg, freg, freg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.freg[args[1].getInt()] - state.freg[args[2].getInt()];
         }),
-        float_mul("fmul freg, freg, freg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] * c.rm.state.freg[c.arguments[2].getInt()];
+        float_mul("fmul freg, freg, freg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.freg[args[1].getInt()] * state.freg[args[2].getInt()];
         }),
-        float_div("fdiv freg, freg, freg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] / c.rm.state.freg[c.arguments[2].getInt()];
+        float_div("fdiv freg, freg, freg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.freg[args[1].getInt()] / state.freg[args[2].getInt()];
         }),
 
-        float_mod("fmod freg, freg, freg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] % c.rm.state.freg[c.arguments[2].getInt()];
+        float_mod("fmod freg, freg, freg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.freg[args[1].getInt()] % state.freg[args[2].getInt()];
         }),
 
         //conditionals
-        float_gt("fgt breg, freg, freg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] > c.rm.state.freg[c.arguments[2].getInt()];
+        float_gt("fgt breg, freg, freg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.freg[args[1].getInt()] > state.freg[args[2].getInt()];
         }),
-        float_st("fst breg, freg, freg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] < c.rm.state.freg[c.arguments[2].getInt()];
+        float_st("fst breg, freg, freg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.freg[args[1].getInt()] < state.freg[args[2].getInt()];
         }),
-        float_eq("feq breg, freg, freg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.freg[c.arguments[1].getInt()] == c.rm.state.freg[c.arguments[2].getInt()];
+        float_eq("feq breg, freg, freg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.freg[args[1].getInt()] == state.freg[args[2].getInt()];
         }),
 
         //value moving
-        float_mov("fmov freg, fimm", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.arguments[1].getFloat();
+        float_mov("fmov freg, fimm", (args,state) -> {
+            state.freg[args[0].getInt()] = args[1].getFloat();
         }),
-        float_load("fload freg, ireg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.fmem.get(c.rm.state.ireg[c.arguments[1].getInt()]);
+        float_load("fload freg, ireg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.fmem.get(state.ireg[args[1].getInt()]);
         }),
-        float_store("fstore ireg, freg", (c) -> {
-            c.rm.state.fmem.set(c.rm.state.ireg[c.arguments[0].getInt()], c.rm.state.freg[c.arguments[1].getInt()]);
+        float_store("fstore ireg, freg", (args,state) -> {
+            state.fmem.set(state.ireg[args[0].getInt()], state.freg[args[1].getInt()]);
         }),
 
         //stack instructions
-        float_pop("fpop freg", (c) -> {
-            c.rm.state.freg[c.arguments[0].getInt()] = c.rm.state.fstack.pop();
+        float_pop("fpop freg", (args,state) -> {
+            state.freg[args[0].getInt()] = state.fstack.pop();
         }),
-        float_push("fpush freg", (c) -> {
-            c.rm.state.fstack.push(c.rm.state.freg[c.arguments[0].getInt()]);
+        float_push("fpush freg", (args,state) -> {
+            state.fstack.push(state.freg[args[0].getInt()]);
         }),
         //=====END FLOAT INSTRUCTIONS=====
 
         //=====START BOOLEAN INSTRUCTIONS=====
         //standard logic operations
-        bool_and("and breg, breg, breg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.breg[c.arguments[1].getInt()] && c.rm.state.breg[c.arguments[2].getInt()];
+        bool_and("and breg, breg, breg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.breg[args[1].getInt()] && state.breg[args[2].getInt()];
         }),
-        bool_or("or breg, breg, breg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.breg[c.arguments[1].getInt()] || c.rm.state.breg[c.arguments[2].getInt()];
+        bool_or("or breg, breg, breg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.breg[args[1].getInt()] || state.breg[args[2].getInt()];
         }),
-        bool_xor("xor breg, breg, breg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.breg[c.arguments[1].getInt()] ^ c.rm.state.breg[c.arguments[2].getInt()];
+        bool_xor("xor breg, breg, breg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.breg[args[1].getInt()] ^ state.breg[args[2].getInt()];
         }),
-        bool_not("not breg, breg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = !c.rm.state.breg[c.arguments[1].getInt()];
+        bool_not("not breg, breg", (args,state) -> {
+            state.breg[args[0].getInt()] = !state.breg[args[1].getInt()];
         }),
-//        bool_eq("eq breg, breg, breg", (c) -> {
-//            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.breg[c.arguments[1].getInt()] == c.rm.state.breg[c.arguments[2].getInt()];
+//        bool_eq("eq breg, breg, breg", (args,state) -> {
+//            state.breg[args[0].getInt()] = state.breg[args[1].getInt()] == state.breg[args[2].getInt()];
 //        }),
 
         //value moving
-        bool_mov("bmov breg, bimm", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.arguments[1].getBool();
+        bool_mov("bmov breg, bimm", (args,state) -> {
+            state.breg[args[0].getInt()] = args[1].getBool();
         }),
-        bool_load("bload breg, ireg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.bmem.get(c.rm.state.ireg[c.arguments[1].getInt()]);
+        bool_load("bload breg, ireg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.bmem.get(state.ireg[args[1].getInt()]);
         }),
-        bool_store("bstore ireg, breg", (c) -> {
-            c.rm.state.bmem.set(c.rm.state.ireg[c.arguments[0].getInt()], c.rm.state.breg[c.arguments[1].getInt()]);
+        bool_store("bstore ireg, breg", (args,state) -> {
+            state.bmem.set(state.ireg[args[0].getInt()], state.breg[args[1].getInt()]);
         }),
 
         //stack instructions
-        bool_pop("bpop breg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = c.rm.state.bstack.pop();
+        bool_pop("bpop breg", (args,state) -> {
+            state.breg[args[0].getInt()] = state.bstack.pop();
         }),
-        bool_push("bpush breg", (c) -> {
-            c.rm.state.bstack.push(c.rm.state.breg[c.arguments[0].getInt()]);
+        bool_push("bpush breg", (args,state) -> {
+            state.bstack.push(state.breg[args[0].getInt()]);
         }),
         //=====END BOOLEAN INSTRUCTIONS=====
 
@@ -433,30 +462,30 @@ public class RegisterMachine {
 
         //=====START STRING INSTRUCTIONS=====
         //string stuff
-        string_add("sadd sreg, sreg, sreg", (c) -> {
-            c.rm.state.sreg[c.arguments[0].getInt()] = c.rm.state.sreg[c.arguments[1].getInt()] + c.rm.state.sreg[c.arguments[2].getInt()];
+        string_add("sadd sreg, sreg, sreg", (args,state) -> {
+            state.sreg[args[0].getInt()] = state.sreg[args[1].getInt()] + state.sreg[args[2].getInt()];
         }),
-        string_eq("seq breg, sreg, sreg", (c) -> {
-            c.rm.state.breg[c.arguments[0].getInt()] = Objects.equals(c.rm.state.sreg[c.arguments[1].getInt()], c.rm.state.sreg[c.arguments[2].getInt()]);
+        string_eq("seq breg, sreg, sreg", (args,state) -> {
+            state.breg[args[0].getInt()] = Objects.equals(state.sreg[args[1].getInt()], state.sreg[args[2].getInt()]);
         }),
 
         //value moving
-        string_mov("smov sreg, simm", (c) -> {
-            c.rm.state.sreg[c.arguments[0].getInt()] = c.arguments[1].getString();
+        string_mov("smov sreg, simm", (args,state) -> {
+            state.sreg[args[0].getInt()] = args[1].getString();
         }),
-        string_load("sload sreg, ireg", (c) -> {
-            c.rm.state.sreg[c.arguments[0].getInt()] = c.rm.state.smem.get(c.rm.state.ireg[c.arguments[1].getInt()]);
+        string_load("sload sreg, ireg", (args,state) -> {
+            state.sreg[args[0].getInt()] = state.smem.get(state.ireg[args[1].getInt()]);
         }),
-        string_store("sstore ireg, sreg", (c) -> {
-            c.rm.state.smem.set(c.rm.state.ireg[c.arguments[0].getInt()], c.rm.state.sreg[c.arguments[1].getInt()]);
+        string_store("sstore ireg, sreg", (args,state) -> {
+            state.smem.set(state.ireg[args[0].getInt()], state.sreg[args[1].getInt()]);
         }),
 
         //stack instructions
-        string_pop("spop sreg", (c) -> {
-            c.rm.state.sreg[c.arguments[0].getInt()] = c.rm.state.sstack.pop();
+        string_pop("spop sreg", (args,state) -> {
+            state.sreg[args[0].getInt()] = state.sstack.pop();
         }),
-        string_push("spush sreg", (c) -> {
-            c.rm.state.sstack.push(c.rm.state.sreg[c.arguments[0].getInt()]);
+        string_push("spush sreg", (args,state) -> {
+            state.sstack.push(state.sreg[args[0].getInt()]);
         }),
         //=====END STRING INSTRUCTIONS=====
 
@@ -470,9 +499,9 @@ public class RegisterMachine {
         public static final Map<String, Instruction> opcodeMap = new HashMap<>();
 
         public final String spec;
-        public final Consumer<OpContext> exec;
+        public final BiConsumer<OpContext.Argument[], State> exec;
         public final SpecLanguage.Parser.ParseData parseData;
-        Instruction(String spec, Consumer<OpContext> exec){
+        Instruction(String spec, BiConsumer<OpContext.Argument[], State> exec){
             this.spec = spec;
             this.exec = exec;
 
