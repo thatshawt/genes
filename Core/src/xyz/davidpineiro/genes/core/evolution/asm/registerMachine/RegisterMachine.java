@@ -5,30 +5,28 @@ import org.apache.commons.lang.NullArgumentException;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class RegisterMachine {
 
     protected State state = new State();
 
-    public void step(){
+    public void step() {
         final Assembler.CompleteInstruction instruction = state.program[state.ip];
 
         OpContext context = new OpContext(this, instruction.arguments);
 
-        instruction.instruction.exec.accept(context.arguments, state);
+        try {
+            instruction.instruction.exec.accept(context.arguments, state);
+        } catch (ErrorStateException e) {
+            state.estack.push(e.errorState);
+        }
         state.ip++;
     }
 
     public void stepUntilHalt(){
         while(state.ip < state.program.length || state.halt){
-            try {
-                step();
-            }catch(ErrorStateException e){
-                //idk
-            }
+            step();
         }
     }
 
@@ -77,8 +75,6 @@ public class RegisterMachine {
     }
 
     private static class MachineStack<T>{
-
-        private State state;
         private Stack<T> stack = new Stack<>();
 
         // when stack is empty it pushes an error on the error stack
@@ -103,11 +99,15 @@ public class RegisterMachine {
     }
 
     protected enum ErrorState{
-        DIV_BY_ZERO, POP_EMPTY_STACK,
+        NONE,
+        INT_DIV_BY_ZERO, FLOAT_DIV_BY_ZERO,
+        POP_EMPTY_STACK,
     }
     protected static class ErrorStateException extends Exception{
+        public final ErrorState errorState;
         public ErrorStateException(ErrorState errorState) {
             super(errorState.name());
+            this.errorState = errorState;
         }
     }
 
@@ -124,8 +124,6 @@ public class RegisterMachine {
         protected float[] freg = new float[REGISTER_COUNT];
         protected String[] sreg = new String[REGISTER_COUNT];
         protected Object[] oreg = new Object[REGISTER_COUNT];
-
-        //TODO: fix the clearAllRegisters stuff
         protected ErrorState[] ereg = new ErrorState[REGISTER_COUNT];
 
 
@@ -136,11 +134,13 @@ public class RegisterMachine {
         protected MachineMemory<Object> omem = new MachineMemory<>(Object::new);
 
 
-        protected Stack<Integer> istack =  new Stack<>();
-        protected Stack<Boolean> bstack =  new Stack<>();
-        protected Stack<Float> fstack =  new Stack<>();
-        protected Stack<String> sstack =  new Stack<>();
-        protected Stack<Object> ostack =  new Stack<>();
+        protected MachineStack<Integer> istack = new MachineStack<>();
+        protected MachineStack<Boolean> bstack = new MachineStack<>();
+        protected MachineStack<Float> fstack = new MachineStack<>();
+        protected MachineStack<String> sstack = new MachineStack<>();
+        protected MachineStack<Object> ostack = new MachineStack<>();
+        public MachineStack<ErrorState> estack = new MachineStack<>();
+
     }
 
     private static class OpContext {
@@ -216,6 +216,8 @@ public class RegisterMachine {
 
     }
 
+    //TODO: add instructions to interact with error stack and registers
+    //TODO: add error register to the lexers/parsers
     public enum Instruction{
         //special instructions
         halt("halt", (args,state) -> {
@@ -306,6 +308,7 @@ public class RegisterMachine {
                 state.sreg[i] = "";
                 state.ireg[i] = 0;
                 state.oreg[i] = new Object();
+                state.ereg[i] = ErrorState.NONE;
             }
         }),
 
@@ -315,6 +318,7 @@ public class RegisterMachine {
             state.bstack.clear();
             state.sstack.clear();
             state.ostack.clear();
+            state.estack.clear();
         }),
 
         //=====START INTEGER INSTRUCTIONS=====
@@ -330,6 +334,8 @@ public class RegisterMachine {
             state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] * state.ireg[args[2].getInt()];
         }),
         int_div("idiv ireg, ireg, ireg", (args,state) -> {
+            if(args[2].getInt() == 0)
+                throw new ErrorStateException(ErrorState.INT_DIV_BY_ZERO);
             state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] / state.ireg[args[2].getInt()];
         }),
 
@@ -382,6 +388,8 @@ public class RegisterMachine {
             state.freg[args[0].getInt()] = state.freg[args[1].getInt()] * state.freg[args[2].getInt()];
         }),
         float_div("fdiv freg, freg, freg", (args,state) -> {
+            if(args[2].getInt() == 0)
+                throw new ErrorStateException(ErrorState.FLOAT_DIV_BY_ZERO);
             state.freg[args[0].getInt()] = state.freg[args[1].getInt()] / state.freg[args[2].getInt()];
         }),
 
@@ -499,9 +507,13 @@ public class RegisterMachine {
         public static final Map<String, Instruction> opcodeMap = new HashMap<>();
 
         public final String spec;
-        public final BiConsumer<OpContext.Argument[], State> exec;
+
+        private interface InstructionConsumer{
+            void accept(OpContext.Argument[] args, State state) throws ErrorStateException;
+        }
+        public final InstructionConsumer exec;
         public final SpecLanguage.Parser.ParseData parseData;
-        Instruction(String spec, BiConsumer<OpContext.Argument[], State> exec){
+        Instruction(String spec, InstructionConsumer exec){
             this.spec = spec;
             this.exec = exec;
 
