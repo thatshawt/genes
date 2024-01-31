@@ -5,6 +5,7 @@ import org.apache.commons.lang.NullArgumentException;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class RegisterMachine {
@@ -109,14 +110,41 @@ public class RegisterMachine {
 
     public enum Interrupt{
         //exceptions
-        INT_DIV_BY_ZERO(0), FLOAT_DIV_BY_ZERO(1), POP_EMPTY_STACK(2),
+        INT_DIV_BY_ZERO(0),
+        FLOAT_DIV_BY_ZERO(1),
+        POP_EMPTY_STACK(2),
 
-        //"system" interrupt functions
+        BAD_SYSCALL_ARGUMENTS(3),
         ;
 
         public final int i;
+//        public final boolean enabled;
         Interrupt(int i){
             this.i = i;
+//            this.enabled = enabled;
+        }
+
+    }
+
+    public enum SystemCall{
+        PRINT(0, (state) -> {
+            System.out.print(state.sreg[0]);
+        }),
+
+        ;
+
+        public final int i;
+        public final Consumer<State> exec;
+        SystemCall(int i, Consumer<State> exec){
+            this.i = i;
+            this.exec = exec;
+        }
+
+        public static final Map<Integer, Consumer<State>> sysCallMap = new HashMap<>();
+
+        static{
+            for(SystemCall systemCall : SystemCall.values())
+                sysCallMap.put(systemCall.i, systemCall.exec);
         }
 
     }
@@ -283,6 +311,17 @@ public class RegisterMachine {
 
             if(interruptI >= 0 && interruptI < state.interrupt_handler_table.length)
                 state.interrupt_mask_table[interruptI] = false;
+        }),
+
+        syscall("syscall ireg/iimm", (args,state) -> {
+            final int syscallI;
+            if(args[0].argumentType == OpContext.ArgumentType.IREG){
+                syscallI = state.ireg[args[0].getInt()];
+            }else {
+                syscallI = args[0].getInt();
+            }
+            if(SystemCall.sysCallMap.containsKey(syscallI))
+                SystemCall.sysCallMap.get(syscallI).accept(state);
         }),
 
         ip_load("ipload ireg", (args,state) -> {
@@ -1233,9 +1272,9 @@ public class RegisterMachine {
 
     public static void main(String[] args) {
         String assemblerInput =
-                "imov ireg0 123\n" +
-                "imov ireg1 123\n" +
-                "imul ireg2 ireg1 ireg0\n";
+                "smov sreg0 \"hello world!\"\n" +
+                "syscall 0\n"
+                ;
         List<Assembler.Lexer.Token> asmTokens = Assembler.Lexer.lex(assemblerInput);
         System.out.println(assemblerInput);
 
