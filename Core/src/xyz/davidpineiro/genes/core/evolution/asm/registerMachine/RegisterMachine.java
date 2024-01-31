@@ -18,10 +18,12 @@ public class RegisterMachine {
 
         try {
             instruction.instruction.exec.accept(context.arguments, state);
-        } catch (ErrorStateException e) {
-            state.estack.push(e.errorState);
+            state.ip++;
+        } catch (InterruptException e) {
+            final int i = e.interrupt.i;
+            if(state.interrupt_mask_table[i])
+                state.ip = state.interrupt_handler_table[i];
         }
-        state.ip++;
     }
 
     public void stepUntilHalt(){
@@ -77,10 +79,9 @@ public class RegisterMachine {
     private static class MachineStack<T>{
         private Stack<T> stack = new Stack<>();
 
-        // when stack is empty it pushes an error on the error stack
-        public T pop() throws ErrorStateException {
+        public T pop() throws InterruptException {
             if (stack.size() == 0)
-                throw new ErrorStateException(ErrorState.POP_EMPTY_STACK);
+                throw new InterruptException(Interrupt.POP_EMPTY_STACK);
 
             return stack.pop();
         }
@@ -98,20 +99,32 @@ public class RegisterMachine {
         }
     }
 
-    protected enum ErrorState{
-        NONE,
-        INT_DIV_BY_ZERO, FLOAT_DIV_BY_ZERO,
-        POP_EMPTY_STACK,
-    }
-    protected static class ErrorStateException extends Exception{
-        public final ErrorState errorState;
-        public ErrorStateException(ErrorState errorState) {
-            super(errorState.name());
-            this.errorState = errorState;
+    protected static class InterruptException extends Exception{
+        public final Interrupt interrupt;
+        public InterruptException(Interrupt interrupt) {
+            super(interrupt.name());
+            this.interrupt = interrupt;
         }
     }
 
+    public enum Interrupt{
+        //exceptions
+        INT_DIV_BY_ZERO(0), FLOAT_DIV_BY_ZERO(1), POP_EMPTY_STACK(2),
+
+        //"system" interrupt functions
+        ;
+
+        public final int i;
+        Interrupt(int i){
+            this.i = i;
+        }
+
+    }
+
     protected static class State{
+        State(){
+            Arrays.fill(interrupt_mask_table, false);
+        }
         protected int ip = 0;
         protected boolean halt = false;
 
@@ -119,12 +132,15 @@ public class RegisterMachine {
 
         public static final int REGISTER_COUNT = 5;
 
+        protected int[] interrupt_handler_table = new int[Interrupt.values().length];
+        protected boolean[] interrupt_mask_table = new boolean[Interrupt.values().length];
+
         protected int[] ireg = new int[REGISTER_COUNT];
         protected boolean[] breg = new boolean[REGISTER_COUNT];
         protected float[] freg = new float[REGISTER_COUNT];
         protected String[] sreg = new String[REGISTER_COUNT];
         protected Object[] oreg = new Object[REGISTER_COUNT];
-        protected ErrorState[] ereg = new ErrorState[REGISTER_COUNT];
+//        protected ErrorState[] ereg = new ErrorState[REGISTER_COUNT];
 
 
         protected IntMachineMemory imem = new IntMachineMemory();
@@ -139,7 +155,7 @@ public class RegisterMachine {
         protected MachineStack<Float> fstack = new MachineStack<>();
         protected MachineStack<String> sstack = new MachineStack<>();
         protected MachineStack<Object> ostack = new MachineStack<>();
-        public MachineStack<ErrorState> estack = new MachineStack<>();
+//        public MachineStack<ErrorState> estack = new MachineStack<>();
 
     }
 
@@ -160,6 +176,7 @@ public class RegisterMachine {
                     case IIMM : return SpecLanguage.Parser.ArgumentType.INTEGER_IMM;
                     case IREG : return SpecLanguage.Parser.ArgumentType.INTEGER_REG;
                     case OREG : return SpecLanguage.Parser.ArgumentType.OBJECT_REG;
+//                    case EREG : return SpecLanguage.Parser.ArgumentType.ERROR_REG;
                     default: return null;
                 }
             }
@@ -213,18 +230,60 @@ public class RegisterMachine {
             this.rm = rm;
             this.arguments = arguments;
         }
-
     }
 
-    //TODO: add instructions to interact with error stack and registers
-    //TODO: add error register to the lexers/parsers
     public enum Instruction{
-        //special instructions
+        //special instructions,
+        nop("nop", (args,state) -> {}),
+
         halt("halt", (args,state) -> {
             state.halt = true;
         }),
 
-        nop("nop", (args,state) -> {}),
+        //TODO: should interrupts call an interrupt if the interruptI is out of bounds?
+        //interrupt instructions
+        interrupt_set("int_set ireg/iimm ireg/iimm", (args,state) -> {
+            final int interruptI;
+            if(args[0].argumentType == OpContext.ArgumentType.IREG){
+                interruptI = state.ireg[args[0].getInt()];
+            }else {
+                interruptI = args[0].getInt();
+            }
+
+            final int ip;
+            if(args[1].argumentType == OpContext.ArgumentType.IREG){
+                ip = state.ireg[args[1].getInt()];
+            }else {
+                ip = args[1].getInt();
+            }
+
+            if(interruptI >= 0 && interruptI < state.interrupt_handler_table.length)
+                state.interrupt_handler_table[interruptI] = ip;
+        }),
+
+        interrupt_enable("int_enable ireg/iimm", (args,state)->{
+            final int interruptI;
+            if(args[0].argumentType == OpContext.ArgumentType.IREG){
+                interruptI = state.ireg[args[0].getInt()];
+            }else {
+                interruptI = args[0].getInt();
+            }
+
+            if(interruptI >= 0 && interruptI < state.interrupt_handler_table.length)
+                state.interrupt_mask_table[interruptI] = true;
+        }),
+
+        interrupt_disable("int_disable ireg/iimm", (args,state)->{
+            final int interruptI;
+            if(args[0].argumentType == OpContext.ArgumentType.IREG){
+                interruptI = state.ireg[args[0].getInt()];
+            }else {
+                interruptI = args[0].getInt();
+            }
+
+            if(interruptI >= 0 && interruptI < state.interrupt_handler_table.length)
+                state.interrupt_mask_table[interruptI] = false;
+        }),
 
         ip_load("ipload ireg", (args,state) -> {
             state.ireg[args[0].getInt()] = state.ip;
@@ -234,6 +293,7 @@ public class RegisterMachine {
             state.istack.push(state.ip);
         }),
 
+        //branching instructions
         jump("jmp iimm/ireg", (args,state) -> {
             if(args[0].argumentType == OpContext.ArgumentType.IREG){
                 state.ip += state.ireg[args[0].getInt()];
@@ -308,7 +368,7 @@ public class RegisterMachine {
                 state.sreg[i] = "";
                 state.ireg[i] = 0;
                 state.oreg[i] = new Object();
-                state.ereg[i] = ErrorState.NONE;
+//                state.ereg[i] = ErrorState.NONE;
             }
         }),
 
@@ -318,7 +378,7 @@ public class RegisterMachine {
             state.bstack.clear();
             state.sstack.clear();
             state.ostack.clear();
-            state.estack.clear();
+//            state.estack.clear();
         }),
 
         //=====START INTEGER INSTRUCTIONS=====
@@ -335,7 +395,7 @@ public class RegisterMachine {
         }),
         int_div("idiv ireg, ireg, ireg", (args,state) -> {
             if(args[2].getInt() == 0)
-                throw new ErrorStateException(ErrorState.INT_DIV_BY_ZERO);
+                throw new InterruptException(Interrupt.INT_DIV_BY_ZERO);
             state.ireg[args[0].getInt()] = state.ireg[args[1].getInt()] / state.ireg[args[2].getInt()];
         }),
 
@@ -389,7 +449,7 @@ public class RegisterMachine {
         }),
         float_div("fdiv freg, freg, freg", (args,state) -> {
             if(args[2].getInt() == 0)
-                throw new ErrorStateException(ErrorState.FLOAT_DIV_BY_ZERO);
+                throw new InterruptException(Interrupt.FLOAT_DIV_BY_ZERO);
             state.freg[args[0].getInt()] = state.freg[args[1].getInt()] / state.freg[args[2].getInt()];
         }),
 
@@ -499,7 +559,7 @@ public class RegisterMachine {
 
 
         //=====START OBJECT INSTRUCTIONS=====
-        //TODO: what to do with object instructions ;-;
+        //what to do with object instructions ;-;
         //=====END OBJECT INSTRUCTIONS=====
         ;
 
@@ -509,7 +569,7 @@ public class RegisterMachine {
         public final String spec;
 
         private interface InstructionConsumer{
-            void accept(OpContext.Argument[] args, State state) throws ErrorStateException;
+            void accept(OpContext.Argument[] args, State state) throws InterruptException;
         }
         public final InstructionConsumer exec;
         public final SpecLanguage.Parser.ParseData parseData;
@@ -618,6 +678,7 @@ public class RegisterMachine {
                         case OBJECT_REG:return OpContext.ArgumentType.OREG;
                         case STRING_IMM:return OpContext.ArgumentType.SIMM;
                         case STRING_REG:return OpContext.ArgumentType.SREG;
+//                        case ERROR_REG:return OpContext.ArgumentType.EREG;
                         default: return null;
                     }
                 }
@@ -674,6 +735,7 @@ public class RegisterMachine {
                                 case 'b':argumentTypes.add(ArgumentType.BOOL_REG);break;
                                 case 's':argumentTypes.add(ArgumentType.STRING_REG);break;
                                 case 'o':argumentTypes.add(ArgumentType.OBJECT_REG);break;
+//                                case 'e':argumentTypes.add(ArgumentType.ERROR_REG);break;
                             }
                         }else if(value.toLowerCase().endsWith("imm")){
                             final char start = value.toLowerCase().charAt(0);
@@ -861,6 +923,7 @@ public class RegisterMachine {
                                 case 's': type=OpContext.ArgumentType.SREG;break;
                                 case 'o': type=OpContext.ArgumentType.OREG;break;
                                 case 'b': type=OpContext.ArgumentType.BREG;break;
+//                                case 'e': type=OpContext.ArgumentType.EREG;break;
                             }
                             int regValue = Integer.parseInt(token.value.substring(4));
 
@@ -973,6 +1036,20 @@ public class RegisterMachine {
             }
         }
 
+        public static byte[] toByteArray(List<Assembler.CompleteInstruction> program)  {
+            try {
+                ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+
+                BinaryRepresentation.writeToOutputStream(program, byteStream);
+
+                final byte[] rawBytes = byteStream.toByteArray();
+                return rawBytes;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+        }
+
         public static BinaryRepresentation fromInputStream(InputStream input) throws IOException {
             InstructionBlock instructionBlock1 = null;
             DataBlock dataBlock1 = null;
@@ -1000,6 +1077,14 @@ public class RegisterMachine {
                 }
             }
             return new BinaryRepresentation(instructionBlock1, dataBlock1);
+        }
+
+        public static BinaryRepresentation fromBytes(byte[] bytes){
+            try {
+                return fromInputStream(new ByteArrayInputStream(bytes));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         static class InstructionBlock{
@@ -1147,37 +1232,38 @@ public class RegisterMachine {
     }
 
     public static void main(String[] args) {
-        String assemblerInput = "imov ireg0 123\nimov ireg1 123\nimul ireg2 ireg1 ireg0";
+        String assemblerInput =
+                "imov ireg0 123\n" +
+                "imov ireg1 123\n" +
+                "imul ireg2 ireg1 ireg0\n";
         List<Assembler.Lexer.Token> asmTokens = Assembler.Lexer.lex(assemblerInput);
         System.out.println(assemblerInput);
 
         try {
             List<Assembler.CompleteInstruction> instructions = Assembler.Parser.parse(asmTokens);
 
-            ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+            final byte[] rawBytes = BinaryRepresentation.toByteArray(instructions);
 
-            BinaryRepresentation.writeToOutputStream(instructions, byteStream);
-
-            byte[] rawBytes = byteStream.toByteArray();
-
-            System.out.println(Arrays.toString(rawBytes));
-//            System.out.println(Arrays.toString(rawBytesReversed));
-            System.out.printf("array size : %d\n", byteStream.toByteArray().length);
+            System.out.printf("bytes: %s, array size : %d\n",
+                    Arrays.toString(rawBytes), rawBytes.length);
 
 //            System.out.println(instructions);
             Assembler.CompleteInstruction[] moreInstructions =
-                    BinaryRepresentation.fromInputStream(new ByteArrayInputStream(rawBytes))
+                    BinaryRepresentation.fromBytes(rawBytes)
                             .instructionBlock.completeInstructions;
 
             System.out.println(Arrays.toString(moreInstructions));
 
             RegisterMachine registerMachine = new RegisterMachine();
+
             registerMachine.resetStateAndLoadProgram(List.of(moreInstructions));
-            System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
+
+            System.out.println("before, ireg: " + Arrays.toString(registerMachine.state.ireg));
+
             registerMachine.stepUntilHalt();
-            System.out.println("ireg: " + Arrays.toString(registerMachine.state.ireg));
-        } catch (IOException e) {
-            e.printStackTrace();
+
+            System.out.println("after, ireg: " + Arrays.toString(registerMachine.state.ireg));
+
         } catch (Assembler.Parser.WrongTypeException e) {
             System.err.println(e.getMessage());
         }
