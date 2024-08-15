@@ -1,0 +1,43 @@
+CompleteInstruction Program Binary Format:
+
+"imov ireg0, 1337"
+
+recognize InstructionBlock
+read Instructions Descriptor
+read instructions
+
+recognize DataPoolBlock
+
+
+Binary Format Description:
+
+    InstructionBlock(magic header 1 byte):
+        Instructions Descriptor:
+        # of instructions(2 bytes)
+        Instructions:
+        [opcode, arguments]
+        [opcode, arguments]
+        [opcode, arguments]
+        ...
+
+    DataBlock(magic header 1 byte):
+        DataIndices:
+        0: start 0,   size 15
+        1: start 16,  size 86
+        2: start 102, size 143
+        3: start 245, size 3
+        ...
+        DataList:
+        0:   [data0] (15 bytes)
+        16:  [data1] (86 bytes)
+        102: [data2] (143 bytes)
+        245: [data3] (3 bytes)
+        ...
+
+instruction encoding:
+|________,________|________|???????????????????????????????????|???????????????????????????????????|
+    2 bytes         1 byte            #OfArgs * 5bytes                      #OfArgs * ? bytes
+    opcode      # of arguments      arguments descriptors                       arguments
+                               argType: 1 byte, size: 4 bytes
+
+argument type lets just use 1 byte why not(IREG, BREG, FREG, SREG, OREG, IIMM, BIMM, FIMM, SIMM)

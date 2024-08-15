@@ -9,7 +9,6 @@ import xyz.davidpineiro.genes.core.evolution.std.strings.StringEvolutionProblem;
 import xyz.davidpineiro.genes.core.problems.Problem;
 
 public class TestBench {
-
     public static void main(String[] args) {
         EvolverSolver<CharGenome.CharGene> evolverSolver = new EvolverSolver<>(
                 CharGenome.CharGene::getRandom,

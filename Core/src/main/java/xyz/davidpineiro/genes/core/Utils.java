@@ -1,6 +1,9 @@
 package xyz.davidpineiro.genes.core;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Random;
+import java.util.RandomAccess;
 
 public final class Utils {
 
@@ -21,6 +24,19 @@ public final class Utils {
             builder.append(getRandomPrintableChar());
         }
         return builder.toString();
+    }
+
+    public static <E> E pickRandom(ArrayList<E> stuff){
+        int yea = random.nextInt(stuff.size());
+        return stuff.get(yea);
+    }
+
+    public static boolean betweenInc(int a, int b,int c){
+        return b <= a  && a <= c;
+    }
+
+    public static boolean betweenInc(float a, float b, float c){
+        return b <= a  && a <= c;
     }
 
 }

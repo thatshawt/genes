@@ -4,14 +4,24 @@ import xyz.davidpineiro.genes.core.Utils;
 
 import java.util.LinkedList;
 import java.util.ListIterator;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public abstract class Genome<G extends IGene> extends LinkedList<G> implements Cloneable{
 
-    public float cINSERT_GENE_CHANCE = 0.05f;
-    public float cADD_GENE_CHANCE = 0.01f;
-    public float cDELETE_GENE_CHANCE = 0.005f;
+    public float cINSERT_GENE_CHANCE = 0.008f;
+    public float cADD_GENE_CHANCE = 0.008f;
+    public float cDELETE_GENE_CHANCE = 0.01f;
     public float cGENE_MUTATE_CHANCE= 0.05f;
     public float cFLIP_ACTIVE_CHANCE = 0.01f;
+    public float cMAX_GENES = 10;
+
+    public final String RANDOM_ID = Utils.getRandomPrintableString(100);
+
+    @Override
+    public int hashCode() {
+        return RANDOM_ID.chars().sum();
+    }
 
     public int activeGenes(){
         int count = 0;
@@ -85,6 +95,39 @@ public abstract class Genome<G extends IGene> extends LinkedList<G> implements C
 //                System.out.print("{illegalstate}\n");
             }
         }
+    }
+
+    public Genome<G> naivePrune(GeneticEvolutionProblem<G> problem,
+                                int consecutiveFailsThreshold){
+        final Random random = ThreadLocalRandom.current();
+
+        int consecutiveFails = 0;
+        Genome<G> genome = (Genome<G>) this.clone();
+        Genome<G> genome2 = (Genome<G>) genome.clone();
+
+        while(consecutiveFails < consecutiveFailsThreshold){
+            //remove a random gene
+            genome2.remove(random.nextInt(genome2.size()));
+
+            //try new genome on problem
+//            final float fitness1 = problem.fitness(genome);
+//            final boolean satisfies1 = problem.satisfies(fitness1, genome);
+
+            final float fitness2 = problem.fitness(genome2);
+            final boolean satisfies2 = problem.satisfies(fitness2, genome2);
+
+//            System.out.printf(" (%s,%s) ", satisfies1 ? "T" : "F", satisfies2 ? "T" : "F");
+
+            //if it didnt fail, then we update use it for the next run
+            if(satisfies2){
+                consecutiveFails = 0;
+                genome = (Genome<G>) genome2.clone();
+            }else{//if it makes it fail, the problem then add to the counter and try again
+                genome2 = (Genome<G>) genome.clone();
+                consecutiveFails++;
+            }
+        }
+        return genome;
     }
 
     @Override

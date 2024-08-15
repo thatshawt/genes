@@ -1,0 +1,15 @@
+thinking of doing NEAT but replace the network graph with a program graph.
+combine the NEAT with programs with a curriculum.
+
+the hard part is making a high quality curriculum to accomplish the tasks that you want.
+im guessing that the curriculum will have to be pretty long to evolve anything useful.
+^^^^^^^
+ill think of optimizations as i go.
+
+TODO: (in order)
+*   design a general NEAT algorithm for graphs.
+        ()
+*
+design a program interpreter (im thinking making it procedural).
+
+then the NEAT algorithm for it.

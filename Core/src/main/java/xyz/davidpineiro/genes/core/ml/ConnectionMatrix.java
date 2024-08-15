@@ -12,7 +12,7 @@ public abstract class ConnectionMatrix<N, D extends ConnectionMatrix.IConnection
         this.dataFactory = dataFactory;
     }
 
-    public static abstract class AbstractConnectionData implements IConnectionData{
+    public static class BaseConnectionData implements IConnectionData{
         public boolean connected;
         @Override
         public boolean isConnected() {
@@ -27,6 +27,13 @@ public abstract class ConnectionMatrix<N, D extends ConnectionMatrix.IConnection
         @Override
         public void connect() {
             this.connected = true;
+        }
+
+        @Override
+        public BaseConnectionData clone(){
+            BaseConnectionData data = new BaseConnectionData();
+            data.connected = this.connected;
+            return data;
         }
     }
 

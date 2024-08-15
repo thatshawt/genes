@@ -1,6 +1,8 @@
 package xyz.davidpineiro.genes.core.evolution;
 
 import xyz.davidpineiro.genes.core.Utils;
+import xyz.davidpineiro.genes.core.evolution.asm.registerMachine.RegisterMachine;
+import xyz.davidpineiro.genes.core.evolution.asm.registerMachine.RegisterMachineGenome;
 import xyz.davidpineiro.genes.core.evolution.exceptions.EvolutionTickLimitException;
 import xyz.davidpineiro.genes.core.problems.Solver;
 
@@ -31,10 +33,16 @@ public class EvolverSolver<G extends IGene>
 
     public List<Genome<G>> initPopulation = new ArrayList<>();
     public Genome<G> solution;
+    public Object thing;
 
     public EvolverSolver(GeneFactory<G> geneFactory, GenomeFactory<G> genomeFactory) {
         this.geneFactory = geneFactory;
         this.genomeFactory = genomeFactory;
+    }
+
+    public EvolverSolver(DualGeneGenomeFactory<G> dualGeneGenomeFactory){
+        this.geneFactory = dualGeneGenomeFactory;
+        this.genomeFactory = dualGeneGenomeFactory;
     }
 
     private static class GenomeResult<E extends IGene>{
@@ -83,7 +91,7 @@ public class EvolverSolver<G extends IGene>
                     final float fitness = problem.fitness(genome);
                     satisfied = problem.satisfies(fitness, genome);
 
-                    results.add(new GenomeResult<G>(genome, fitness));
+                    results.add(new GenomeResult<>(genome, fitness));
 
                     if(satisfied){
                         solution = (Genome<G>) genome.clone();
@@ -93,7 +101,13 @@ public class EvolverSolver<G extends IGene>
                 }
 
                 //sort by fitness
-                results.sort((a, b) -> (int) (b.fitness - a.fitness));
+                results.sort((a, b) -> {
+                    int fitness = (int) (b.fitness - a.fitness);
+                    int size = (a.genome.size() - b.genome.size());
+                    //if they are equal in fitness sort by size
+                    if(fitness == 0)return size;
+                    else return fitness; //otherwise sort by the fitter one
+                });
             }
             if(tick == cMAX_TICK_LIMIT){
                 solution = results.get(0).genome;
@@ -101,10 +115,14 @@ public class EvolverSolver<G extends IGene>
             }
 
             //run this after results so we cann see how we did
-            if(tick % 1000 == 0 || satisfied)
+            if(tick % 1000 == 0 || satisfied) {
                 System.out.printf(
                         "tick: %d, population_size: %d, best1: %s\n",
                         tick, population.size(), results.get(0));
+                if(thing instanceof RegisterMachine rm){
+                    rm.state.prettyPrintRegs();
+                }
+            }
 //            printPopulation(population);
 
             if(satisfied){

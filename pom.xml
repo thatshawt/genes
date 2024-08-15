@@ -14,5 +14,10 @@
         <module>Core</module>
     </modules>
 
+    <properties>
+        <maven.compiler.release>20</maven.compiler.release>
+    </properties>
+
+
 
 </project>

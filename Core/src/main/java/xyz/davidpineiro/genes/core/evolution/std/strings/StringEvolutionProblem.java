@@ -42,7 +42,7 @@ public class StringEvolutionProblem extends GeneticEvolutionProblem<CharGenome.C
         return (float)count;
     }
 
-    protected boolean satisfies(float fitness, Genome<CharGenome.CharGene> genome) {
+    public boolean satisfies(float fitness, Genome<CharGenome.CharGene> genome) {
 //        System.out.printf("fitness: %f, strlength: %d\n", fitness, targetString.length());
         return (int)fitness == targetString.length();
     }

@@ -1,26 +1,36 @@
 package xyz.davidpineiro.genes.core.ml;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class ANN {
 
-    List<Perceptron> inputNeurons;
-    List<Perceptron> hiddenNeurons;
-    List<Perceptron> outputNeurons;
-
+    List<Perceptron> inputNeurons = new ArrayList<>();
+    List<Perceptron> hiddenNeurons = new ArrayList<>();
+    List<Perceptron> outputNeurons = new ArrayList<>();
     WeightMatrix weightMatrix = new WeightMatrix();
 
-    private static class PerceptronCountThing{
-        public float input;
-        public int count;
-        public final int maxCount;
+    public static class PerceptronCountThing{
+        public int count = 0;
+        public int maxCount;
         public float lastActivation;
         public float sum = 0.0f;
 
         public PerceptronCountThing(int maxCount) {
             this.maxCount = maxCount;
+        }
+
+        @Override
+        public String toString() {
+            return "PerceptronCountThing{" +
+//                    ", input=" + input +
+                    ", count=" + count +
+                    ", maxCount=" + maxCount +
+                    ", lastActivation=" + lastActivation +
+                    ", sum=" + sum +
+                    '}';
         }
     }
     private final Map<Perceptron, PerceptronCountThing> neuronMapThing = new HashMap<>();
@@ -38,9 +48,10 @@ public class ANN {
         final PerceptronCountThing fromData = neuronMapThing.get(from);
         for(Perceptron to : connectingTo){
             initNeuronThing(to);
-            PerceptronCountThing toData = neuronMapThing.get(to);
             final float weight = weightMatrix.getConnectionData(from, to).weight;
 
+            PerceptronCountThing toData = neuronMapThing.get(to);
+            toData.count++;
             toData.sum += fromData.lastActivation * weight;
 
             if(toData.count == toData.maxCount){
@@ -70,7 +81,29 @@ public class ANN {
 
 
     public static void main(String[] args) {
-        System.out.println("sussssss");
+        ANN ann = new ANN();
+        Perceptron inputNeuron = new LReLUPerceptron(1.0f);
+        Perceptron hiddenNeuron = new LReLUPerceptron(1.0f);
+        Perceptron outputNeuron = new LReLUPerceptron(1.0f);
+
+        ann.inputNeurons.add(inputNeuron);
+        ann.hiddenNeurons.add(hiddenNeuron);
+        ann.outputNeurons.add(outputNeuron);
+
+        WeightMatrix.PerceptronConnectionData data =
+                new WeightMatrix.PerceptronConnectionData(0.5f, true);
+
+        ann.weightMatrix.forwardConnect(inputNeuron, hiddenNeuron, data.clone());
+        ann.weightMatrix.forwardConnect(hiddenNeuron, outputNeuron, data.clone());
+
+        float[] inputs = {5.0f};
+        ann.forwardPass(inputs);
+
+        System.out.println(ann.neuronMapThing);
+
+        float output = ann.outputMap.get(outputNeuron);
+
+        System.out.printf("input: %f, output: %f\n", inputs[0], output);
     }
 
 }

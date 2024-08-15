@@ -35,7 +35,7 @@ public class EvolutionCurriculum<G extends IGene>
                 EvolverSolver.ReturnReason returnReason = evolverSolver.solve(node.problem);
                 node.solution = (Genome<G>) evolverSolver.solution.clone();
 
-                System.out.printf("return reason: %s\n", returnReason.name());
+//                System.out.printf("return reason: %s\n", returnReason.name());
 
                 final int n = evolverSolver.cMAX_PARENTS;
                 Genome<G>[] newInit = new Genome[n];
@@ -51,9 +51,10 @@ public class EvolutionCurriculum<G extends IGene>
     public static void main(String[] args) {
         EvolverSolver<CharGenome.CharGene> evolverSolver =
                 new EvolverSolver<>(
-                CharGenome.CharGene::getRandom,
-                CharGenome::getRandomGenome
-        );
+                    CharGenome.CharGene::getRandom,
+                    CharGenome::getRandomGenome
+                );
+
         EvolutionCurriculum.Solver<CharGenome.CharGene> curriculumSolver =
                 new EvolutionCurriculum.Solver<>(evolverSolver);
 
