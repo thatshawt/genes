@@ -359,14 +359,14 @@ public class RegisterMachine {
         public FiniteString[] sreg = new FiniteString[REGISTER_COUNT];
         public Object[] oreg = new Object[REGISTER_COUNT];
 
-        public int MAX_MEMORY_ADDRESS = 256;
+        public int MAX_MEMORY_ADDRESS = 2048;
         public IntMachineMemory imem = new IntMachineMemory(this);
         public BooleanMachineMemory bmem = new BooleanMachineMemory(this);
         public FloatMachineMemory fmem = new FloatMachineMemory(this);
         public StringMachineMemory smem = new StringMachineMemory(this);
         public MachineMemory<Object> omem = new MachineMemory<>(Object::new, this);
 
-        public int MAX_STACK_SIZE = 256;
+        public int MAX_STACK_SIZE = 2048;
         public MachineStack<Integer> istack = new MachineStack<>(this);
         public MachineStack<Boolean> bstack = new MachineStack<>(this);
         public MachineStack<Float> fstack = new MachineStack<>(this);
@@ -1459,7 +1459,7 @@ public class RegisterMachine {
         }
 
         private enum ReadingState {LOOKING_BLOCK, RESOLVE_IMMEDIATES, FINISHED}
-        private enum WritingState {ERROR}
+        private enum WritingState {ERROR}//TODO: this is unused rn
         public static void writeToOutputStream(List<Assembler.CompleteInstruction> program, OutputStream output)
                 throws IOException {
             WritingState state = WritingState.ERROR;
